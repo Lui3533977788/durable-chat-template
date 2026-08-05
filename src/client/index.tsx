@@ -29,7 +29,6 @@ function App() {
 			if (message.type === "add") {
 				const foundIndex = messages.findIndex((m) => m.id === message.id);
 				if (foundIndex === -1) {
-					// probably someone else who added a message
 					setMessages((messages) => [
 						...messages,
 						{
@@ -40,9 +39,6 @@ function App() {
 						},
 					]);
 				} else {
-					// this usually means we ourselves added a message
-					// and it was broadcasted back
-					// so let's replace the message with the new message
 					setMessages((messages) => {
 						return messages
 							.slice(0, foundIndex)
@@ -76,48 +72,45 @@ function App() {
 
 	if (!name) {
 		return (
-			<div className="chat container">
-				<h4>Welcome to the chat</h4>
-				<p>Pick a username so your friends know who you are.</p>
-				<form
-					className="row"
-					onSubmit={(e) => {
-						e.preventDefault();
-						const input = e.currentTarget.elements.namedItem(
-							"username",
-						) as HTMLInputElement;
-						const username = input.value.trim();
-						if (username) {
-							localStorage.setItem(USERNAME_KEY, username);
-							setName(username);
-						}
-					}}
-				>
-					<input
-						type="text"
-						name="username"
-						className="ten columns my-input-text"
-						placeholder="Enter your username..."
-						autoComplete="off"
-						maxLength={24}
-					/>
-					<button type="submit" className="send-message two columns">
-						Join chat
-					</button>
-				</form>
+			<div className="chat">
+				<div className="welcome">
+					<h2>Chat</h2>
+					<p>Pick a username to start chatting with your friends.</p>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault();
+							const input = e.currentTarget.elements.namedItem(
+								"username",
+							) as HTMLInputElement;
+							const username = input.value.trim();
+							if (username) {
+								localStorage.setItem(USERNAME_KEY, username);
+								setName(username);
+							}
+						}}
+					>
+						<input
+							type="text"
+							name="username"
+							placeholder="Enter your username..."
+							autoComplete="off"
+							maxLength={24}
+						/>
+						<button type="submit">Join</button>
+					</form>
+				</div>
 			</div>
 		);
 	}
 
 	return (
-		<div className="chat container">
-			<div className="row">
-				<div className="ten columns" style={{ paddingTop: 10 }}>
+		<div className="chat">
+			<div className="chat-header">
+				<span>
 					Chatting as <b>{name}</b>
-				</div>
+				</span>
 				<button
 					type="button"
-					className="send-message two columns"
 					onClick={() => {
 						localStorage.removeItem(USERNAME_KEY);
 						setName("");
@@ -126,14 +119,19 @@ function App() {
 					Change name
 				</button>
 			</div>
-			{messages.map((message) => (
-				<div key={message.id} className="row message">
-					<div className="two columns user">{message.user}</div>
-					<div className="ten columns">{message.content}</div>
-				</div>
-			))}
+			<div className="messages">
+				{messages.map((message) => (
+					<div
+						key={message.id}
+						className={`message ${message.user === name ? "self" : ""}`}
+					>
+						<div className="user">{message.user}</div>
+						<div className="bubble">{message.content}</div>
+					</div>
+				))}
+			</div>
 			<form
-				className="row"
+				className="chat-input"
 				onSubmit={(e) => {
 					e.preventDefault();
 					const content = e.currentTarget.elements.namedItem(
@@ -146,7 +144,6 @@ function App() {
 						role: "user",
 					};
 					setMessages((messages) => [...messages, chatMessage]);
-					// we could broadcast the message here
 
 					socket.send(
 						JSON.stringify({
@@ -161,13 +158,10 @@ function App() {
 				<input
 					type="text"
 					name="content"
-					className="ten columns my-input-text"
-					placeholder={`Hello ${name}! Type a message...`}
+					placeholder={`Message ${name}...`}
 					autoComplete="off"
 				/>
-				<button type="submit" className="send-message two columns">
-					Send
-				</button>
+				<button type="submit">Send</button>
 			</form>
 		</div>
 	);
