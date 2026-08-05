@@ -10,10 +10,14 @@ import {
 } from "react-router";
 import { nanoid } from "nanoid";
 
-import { names, type ChatMessage, type Message } from "../shared";
+import { type ChatMessage, type Message } from "../shared";
+
+const USERNAME_KEY = "durable-chat-username";
 
 function App() {
-	const [name] = useState(names[Math.floor(Math.random() * names.length)]);
+	const [name, setName] = useState(
+		() => localStorage.getItem(USERNAME_KEY) ?? "",
+	);
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 	const { room } = useParams();
 
@@ -70,8 +74,58 @@ function App() {
 		},
 	});
 
+	if (!name) {
+		return (
+			<div className="chat container">
+				<h4>Welcome to the chat</h4>
+				<p>Pick a username so your friends know who you are.</p>
+				<form
+					className="row"
+					onSubmit={(e) => {
+						e.preventDefault();
+						const input = e.currentTarget.elements.namedItem(
+							"username",
+						) as HTMLInputElement;
+						const username = input.value.trim();
+						if (username) {
+							localStorage.setItem(USERNAME_KEY, username);
+							setName(username);
+						}
+					}}
+				>
+					<input
+						type="text"
+						name="username"
+						className="ten columns my-input-text"
+						placeholder="Enter your username..."
+						autoComplete="off"
+						maxLength={24}
+					/>
+					<button type="submit" className="send-message two columns">
+						Join chat
+					</button>
+				</form>
+			</div>
+		);
+	}
+
 	return (
 		<div className="chat container">
+			<div className="row">
+				<div className="ten columns" style={{ paddingTop: 10 }}>
+					Chatting as <b>{name}</b>
+				</div>
+				<button
+					type="button"
+					className="send-message two columns"
+					onClick={() => {
+						localStorage.removeItem(USERNAME_KEY);
+						setName("");
+					}}
+				>
+					Change name
+				</button>
+			</div>
 			{messages.map((message) => (
 				<div key={message.id} className="row message">
 					<div className="two columns user">{message.user}</div>
