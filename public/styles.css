@@ -63,6 +63,70 @@ html {
 	margin: 2px 0;
 }
 
+.room-item {
+	display: flex;
+	align-items: center;
+	gap: 4px;
+}
+
+.room-item .room-link {
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.room-actions {
+	display: none;
+	flex-shrink: 0;
+	gap: 2px;
+	padding-right: 4px;
+}
+
+.room-item:hover .room-actions {
+	display: flex;
+}
+
+.room-actions button {
+	background: none;
+	border: none;
+	color: #888;
+	cursor: pointer;
+	font-size: 11px;
+	padding: 2px 4px;
+	border-radius: 4px;
+	font-family: inherit;
+}
+
+.room-actions button:hover {
+	color: #fff;
+	background: #0f3460;
+}
+
+.room-rename {
+	display: flex;
+	flex: 1;
+	min-width: 0;
+}
+
+.room-rename input {
+	flex: 1;
+	min-width: 0;
+	background: #2a2a4a;
+	border: none;
+	border-radius: 6px;
+	padding: 6px 10px;
+	color: #e0e0e0;
+	font-size: 13px;
+	outline: none;
+	font-family: inherit;
+}
+
+.room-rename input:focus {
+	background: #333355;
+}
+
 .room-link {
 	display: block;
 	padding: 8px 12px;

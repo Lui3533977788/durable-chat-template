@@ -33,6 +33,15 @@ export type RoomsMessage =
 	| {
 			type: "create";
 			name: string;
+	  }
+	| {
+			type: "rename";
+			oldName: string;
+			newName: string;
+	  }
+	| {
+			type: "delete";
+			name: string;
 	  };
 
 export function normalizeRoomName(raw: string): string {

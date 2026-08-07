@@ -126,10 +126,35 @@ export class Rooms extends Server<Env> {
 		this.broadcastRooms();
 	}
 
+	renameRoom(oldName: string, rawNewName: string) {
+		const newName = normalizeRoomName(rawNewName);
+		if (!newName || newName === oldName || this.rooms.includes(newName)) {
+			return;
+		}
+		if (!this.rooms.includes(oldName)) return;
+		this.rooms = this.rooms.filter((r) => r !== oldName);
+		this.rooms.push(newName);
+		this.rooms.sort();
+		this.ctx.storage.sql.exec(`DELETE FROM rooms WHERE name = ?`, oldName);
+		this.ctx.storage.sql.exec(`INSERT INTO rooms (name) VALUES (?)`, newName);
+		this.broadcastRooms();
+	}
+
+	deleteRoom(name: string) {
+		if (!this.rooms.includes(name)) return;
+		this.rooms = this.rooms.filter((r) => r !== name);
+		this.ctx.storage.sql.exec(`DELETE FROM rooms WHERE name = ?`, name);
+		this.broadcastRooms();
+	}
+
 	onMessage(connection: Connection, message: WSMessage) {
 		const parsed = JSON.parse(message as string) as RoomsMessage;
 		if (parsed.type === "create") {
 			this.createRoom(parsed.name);
+		} else if (parsed.type === "rename") {
+			this.renameRoom(parsed.oldName, parsed.newName);
+		} else if (parsed.type === "delete") {
+			this.deleteRoom(parsed.name);
 		}
 	}
 }

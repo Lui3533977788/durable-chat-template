@@ -133,31 +133,88 @@ function Sidebar({
 	rooms,
 	activeRoom,
 	onCreateRoom,
+	onRename,
+	onDelete,
 	onChangeName,
 }: {
 	name: string;
 	rooms: string[];
 	activeRoom?: string;
 	onCreateRoom: (name: string) => void;
+	onRename: (oldName: string, newName: string) => void;
+	onDelete: (name: string) => void;
 	onChangeName: () => void;
 }) {
 	const [newRoom, setNewRoom] = useState("");
+	const [renaming, setRenaming] = useState<string | null>(null);
+	const [renameValue, setRenameValue] = useState("");
+
+	const submitRename = (oldName: string) => {
+		const normalized = normalizeRoomName(renameValue);
+		setRenaming(null);
+		if (!normalized || normalized === oldName) return;
+		onRename(oldName, normalized);
+	};
 
 	return (
 		<aside className="sidebar">
 			<div className="sidebar-header">Chat</div>
 			<div className="sidebar-section">ROOMS</div>
 			<ul className="room-list">
-				{rooms.map((room) => (
-					<li key={room}>
-						<Link
-							to={`/${room}`}
-							className={`room-link ${room === activeRoom ? "active" : ""}`}
-						>
-							# {room}
-						</Link>
-					</li>
-				))}
+				{rooms.map((room) =>
+					renaming === room ? (
+						<li key={room} className="room-item">
+							<form
+								className="room-rename"
+								onSubmit={(e) => {
+									e.preventDefault();
+									submitRename(room);
+								}}
+							>
+								<input
+									type="text"
+									value={renameValue}
+									onChange={(e) => setRenameValue(e.target.value)}
+									onKeyDown={(e) => {
+										if (e.key === "Escape") setRenaming(null);
+									}}
+									autoFocus
+									maxLength={24}
+								/>
+							</form>
+						</li>
+					) : (
+						<li key={room} className="room-item">
+							<Link
+								to={`/${room}`}
+								className={`room-link ${room === activeRoom ? "active" : ""}`}
+							>
+								# {room}
+							</Link>
+							<div className="room-actions">
+								<button
+									type="button"
+									onClick={() => {
+										setRenaming(room);
+										setRenameValue(room);
+									}}
+								>
+									rename
+								</button>
+								<button
+									type="button"
+									onClick={() => {
+										if (window.confirm(`Delete room #${room}?`)) {
+											onDelete(room);
+										}
+									}}
+								>
+									delete
+								</button>
+							</div>
+						</li>
+					),
+				)}
 			</ul>
 			<form
 				className="new-room"
@@ -259,6 +316,29 @@ function App() {
 						} satisfies RoomsMessage),
 					);
 					navigate(`/${normalized}`);
+				}}
+				onRename={(oldName, newName) => {
+					roomsSocket.send(
+						JSON.stringify({
+							type: "rename",
+							oldName,
+							newName,
+						} satisfies RoomsMessage),
+					);
+					if (room === oldName) {
+						navigate(`/${newName}`);
+					}
+				}}
+				onDelete={(name) => {
+					roomsSocket.send(
+						JSON.stringify({
+							type: "delete",
+							name,
+						} satisfies RoomsMessage),
+					);
+					if (room === name) {
+						navigate("/");
+					}
 				}}
 				onChangeName={() => {
 					localStorage.removeItem(USERNAME_KEY);
