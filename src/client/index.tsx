@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { usePartySocket } from "partysocket/react";
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import {
 	BrowserRouter,
 	Routes,
@@ -24,6 +24,41 @@ const USERNAME_KEY = "durable-chat-username";
 function ChatRoom({ room, name }: { room: string; name: string }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 
+	const sendMessage = (chatMessage: ChatMessage) => {
+		setMessages((messages) => [...messages, chatMessage]);
+		socket.send(
+			JSON.stringify({
+				type: "add",
+				...chatMessage,
+			} satisfies Message),
+		);
+	};
+
+	const handleFile = (file: File) => {
+		const isImage = file.type.startsWith("image/");
+		const isVideo = file.type.startsWith("video/");
+		if (!isImage && !isVideo) return;
+		const maxSize = isImage ? 3 * 1024 * 1024 : 8 * 1024 * 1024;
+		if (file.size > maxSize) {
+			window.alert(
+				`File too large. Max ${isImage ? "3" : "8"} MB (Cloudflare limit).`,
+			);
+			return;
+		}
+		const reader = new FileReader();
+		reader.onload = () => {
+			const media = reader.result as string;
+			sendMessage({
+				id: nanoid(8),
+				content: "",
+				user: name,
+				role: "user",
+				media,
+			});
+		};
+		reader.readAsDataURL(file);
+	};
+
 	const socket = usePartySocket({
 		party: "chat",
 		room,
@@ -39,6 +74,7 @@ function ChatRoom({ room, name }: { room: string; name: string }) {
 							content: message.content,
 							user: message.user,
 							role: message.role,
+							media: message.media,
 						},
 					]);
 				} else {
@@ -50,6 +86,7 @@ function ChatRoom({ room, name }: { room: string; name: string }) {
 								content: message.content,
 								user: message.user,
 								role: message.role,
+								media: message.media,
 							})
 							.concat(messages.slice(foundIndex + 1));
 					});
@@ -63,6 +100,7 @@ function ChatRoom({ room, name }: { room: string; name: string }) {
 									content: message.content,
 									user: message.user,
 									role: message.role,
+									media: message.media,
 								}
 							: m,
 					),
@@ -87,7 +125,25 @@ function ChatRoom({ room, name }: { room: string; name: string }) {
 						className={`message ${message.user === name ? "self" : ""}`}
 					>
 						<div className="user">{message.user}</div>
-						<div className="bubble">{message.content}</div>
+						<div className="bubble">
+							{message.media ? (
+								message.media.startsWith("data:image/") ? (
+									<img
+										src={message.media}
+										alt="Image"
+										className="message-media"
+									/>
+								) : (
+									<video
+										src={message.media}
+										controls
+										className="message-media"
+									/>
+								)
+							) : (
+								message.content
+							)}
+						</div>
 					</div>
 				))}
 			</div>
@@ -98,24 +154,29 @@ function ChatRoom({ room, name }: { room: string; name: string }) {
 					const content = e.currentTarget.elements.namedItem(
 						"content",
 					) as HTMLInputElement;
-					const chatMessage: ChatMessage = {
+					if (!content.value.trim()) return;
+					sendMessage({
 						id: nanoid(8),
 						content: content.value,
 						user: name,
 						role: "user",
-					};
-					setMessages((messages) => [...messages, chatMessage]);
-
-					socket.send(
-						JSON.stringify({
-							type: "add",
-							...chatMessage,
-						} satisfies Message),
-					);
-
+					});
 					content.value = "";
 				}}
 			>
+				<label className="media-button" title="Attach image or video">
+					<input
+						type="file"
+						accept="image/*,video/*"
+						onChange={(e) => {
+							const file = e.currentTarget.files?.[0];
+							if (file) handleFile(file);
+							e.currentTarget.value = "";
+						}}
+						hidden
+					/>
+					Media
+				</label>
 				<input
 					type="text"
 					name="content"
@@ -253,6 +314,7 @@ function App() {
 		() => localStorage.getItem(USERNAME_KEY) ?? "",
 	);
 	const [rooms, setRooms] = useState<string[]>([]);
+	const [roomsLoaded, setRoomsLoaded] = useState(false);
 	const { room } = useParams();
 	const navigate = useNavigate();
 
@@ -263,9 +325,17 @@ function App() {
 			const message = JSON.parse(evt.data as string) as RoomsMessage;
 			if (message.type === "rooms") {
 				setRooms(message.rooms);
+				setRoomsLoaded(true);
 			}
 		},
 	});
+
+	useEffect(() => {
+		// if the room we're in got deleted, send us home
+		if (roomsLoaded && room && !rooms.includes(room)) {
+			navigate("/");
+		}
+	}, [roomsLoaded, room, rooms, navigate]);
 
 	if (!name) {
 		return (

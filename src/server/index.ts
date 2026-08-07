@@ -27,8 +27,15 @@ export class Chat extends Server<Env> {
 
 		// create the messages table if it doesn't exist
 		this.ctx.storage.sql.exec(
-			`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user TEXT, role TEXT, content TEXT)`,
+			`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user TEXT, role TEXT, content TEXT, media TEXT)`,
 		);
+
+		// add the media column to existing tables (no-op once it exists)
+		try {
+			this.ctx.storage.sql.exec(`ALTER TABLE messages ADD COLUMN media TEXT`);
+		} catch (e) {
+			// column already exists
+		}
 
 		// load the messages from the database
 		this.messages = this.ctx.storage.sql
@@ -61,14 +68,31 @@ export class Chat extends Server<Env> {
 
 		// Use parameterized queries to prevent SQL injection
 		this.ctx.storage.sql.exec(
-			`INSERT INTO messages (id, user, role, content) VALUES (?, ?, ?, ?)
-			 ON CONFLICT (id) DO UPDATE SET content = ?`,
+			`INSERT INTO messages (id, user, role, content, media) VALUES (?, ?, ?, ?, ?)
+			 ON CONFLICT (id) DO UPDATE SET content = ?, media = ?`,
 			message.id,
 			message.user,
 			message.role,
 			message.content,
+			message.media ?? null,
 			message.content,
+			message.media ?? null,
 		);
+	}
+
+	async onRequest(request: Request) {
+		if (request.method === "DELETE") {
+			this.ctx.storage.sql.exec(`DELETE FROM messages`);
+			this.messages = [];
+			this.broadcast(
+				JSON.stringify({
+					type: "all",
+					messages: [],
+				} satisfies Message),
+			);
+			return new Response("cleared", { status: 200 });
+		}
+		return super.onRequest(request);
 	}
 
 	onMessage(connection: Connection, message: WSMessage) {
@@ -144,6 +168,15 @@ export class Rooms extends Server<Env> {
 		if (!this.rooms.includes(name)) return;
 		this.rooms = this.rooms.filter((r) => r !== name);
 		this.ctx.storage.sql.exec(`DELETE FROM rooms WHERE name = ?`, name);
+		// wipe the chat history for this room for real
+		try {
+			this.env.Chat.get(this.env.Chat.idFromName(name)).fetch(
+				"https://chat/clear",
+				{ method: "DELETE" },
+			);
+		} catch (e) {
+			console.error(`Failed to clear chat history for ${name}`, e);
+		}
 		this.broadcastRooms();
 	}
 

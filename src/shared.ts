@@ -3,6 +3,7 @@ export type ChatMessage = {
 	content: string;
 	user: string;
 	role: "user" | "assistant";
+	media?: string;
 };
 
 export type Message =
@@ -12,6 +13,7 @@ export type Message =
 			content: string;
 			user: string;
 			role: "user" | "assistant";
+			media?: string;
 	  }
 	| {
 			type: "update";
@@ -19,6 +21,7 @@ export type Message =
 			content: string;
 			user: string;
 			role: "user" | "assistant";
+			media?: string;
 	  }
 	| {
 			type: "all";
