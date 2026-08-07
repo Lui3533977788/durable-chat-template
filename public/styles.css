@@ -216,6 +216,38 @@ html {
 	background: #1a4a80;
 }
 
+.sidebar-notify {
+	width: 100%;
+	background: none;
+	border: none;
+	border-top: 1px solid #2a2a4a;
+	color: #999;
+	padding: 10px 12px;
+	cursor: pointer;
+	font-size: 12px;
+	text-align: left;
+	font-family: inherit;
+	transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-notify:hover {
+	background: #2a2a4a;
+	color: #ddd;
+}
+
+.sidebar-notify:disabled {
+	cursor: default;
+}
+
+.sidebar-notify.on {
+	color: #7bc96f;
+}
+
+.sidebar-notify.on:hover {
+	background: none;
+	color: #7bc96f;
+}
+
 .sidebar-footer {
 	display: flex;
 	align-items: center;
@@ -352,10 +384,20 @@ html {
 	color: #777;
 	margin-bottom: 3px;
 	padding: 0 4px;
+	display: flex;
+	align-items: baseline;
+	gap: 6px;
 }
 
 .message.self .user {
 	text-align: right;
+	justify-content: flex-end;
+}
+
+.message .time {
+	font-size: 10px;
+	color: #555;
+	font-weight: 400;
 }
 
 .bubble {
@@ -385,6 +427,50 @@ html {
 
 .message-media:last-child {
 	margin-bottom: 0;
+}
+
+.message img.message-media {
+	cursor: zoom-in;
+}
+
+.lightbox {
+	position: fixed;
+	inset: 0;
+	background: rgba(0, 0, 0, 0.85);
+	z-index: 100;
+	display: flex;
+	align-items: center;
+	justify-content: center;
+	padding: 24px;
+	cursor: zoom-out;
+	animation: fadeIn 0.15s ease;
+}
+
+.lightbox img {
+	max-width: 100%;
+	max-height: 100%;
+	border-radius: 8px;
+	object-fit: contain;
+	box-shadow: 0 8px 40px rgba(0, 0, 0, 0.6);
+}
+
+.lightbox-close {
+	position: fixed;
+	top: 12px;
+	right: 18px;
+	background: none;
+	border: none;
+	color: #fff;
+	font-size: 34px;
+	line-height: 1;
+	cursor: pointer;
+	opacity: 0.8;
+	font-family: inherit;
+	transition: opacity 0.15s;
+}
+
+.lightbox-close:hover {
+	opacity: 1;
 }
 
 .media-button {

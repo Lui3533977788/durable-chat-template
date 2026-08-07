@@ -21,6 +21,31 @@ import {
 
 const USERNAME_KEY = "durable-chat-username";
 
+function formatTime(ts: number): string {
+	const date = new Date(ts);
+	const time = date.toLocaleTimeString([], {
+		hour: "2-digit",
+		minute: "2-digit",
+	});
+	const sameDay = date.toDateString() === new Date().toDateString();
+	if (sameDay) return time;
+	return `${date.toLocaleDateString([], {
+		month: "short",
+		day: "numeric",
+	})}, ${time}`;
+}
+
+function notify(title: string, body: string) {
+	if (!("Notification" in window) || Notification.permission !== "granted") {
+		return;
+	}
+	try {
+		new Notification(title, { body: body.slice(0, 200) });
+	} catch (e) {
+		// some browsers restrict the Notification constructor
+	}
+}
+
 function ChatRoom({
 	room,
 	name,
@@ -81,10 +106,22 @@ function ChatRoom({
 				user: name,
 				role: "user",
 				media,
+				timestamp: Date.now(),
 			});
 		};
 		reader.readAsDataURL(file);
 	};
+
+	const [lightbox, setLightbox] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!lightbox) return;
+		const onKey = (e: KeyboardEvent) => {
+			if (e.key === "Escape") setLightbox(null);
+		};
+		window.addEventListener("keydown", onKey);
+		return () => window.removeEventListener("keydown", onKey);
+	}, [lightbox]);
 
 	const socket = usePartySocket({
 		party: "chat",
@@ -92,6 +129,16 @@ function ChatRoom({
 		onMessage: (evt) => {
 			const message = JSON.parse(evt.data as string) as Message;
 			if (message.type === "add") {
+				if (message.user !== name && document.hidden) {
+					notify(
+						`#${room}: ${message.user}`,
+						message.media
+							? message.media.startsWith("data:image/")
+								? "Sent an image"
+								: "Sent a video"
+							: message.content,
+					);
+				}
 				const foundIndex = messages.findIndex((m) => m.id === message.id);
 				if (foundIndex === -1) {
 					setMessages((messages) => [
@@ -102,6 +149,7 @@ function ChatRoom({
 							user: message.user,
 							role: message.role,
 							media: message.media,
+							timestamp: message.timestamp,
 						},
 					]);
 				} else {
@@ -114,6 +162,7 @@ function ChatRoom({
 								user: message.user,
 								role: message.role,
 								media: message.media,
+								timestamp: message.timestamp,
 							})
 							.concat(messages.slice(foundIndex + 1));
 					});
@@ -128,6 +177,7 @@ function ChatRoom({
 									user: message.user,
 									role: message.role,
 									media: message.media,
+									timestamp: message.timestamp,
 								}
 							: m,
 					),
@@ -167,7 +217,14 @@ function ChatRoom({
 						key={message.id}
 						className={`message ${message.user === name ? "self" : ""}`}
 					>
-						<div className="user">{message.user}</div>
+						<div className="user">
+							{message.user}
+							{message.timestamp && (
+								<span className="time">
+									{formatTime(message.timestamp)}
+								</span>
+							)}
+						</div>
 						<div className="bubble">
 							{message.media ? (
 								message.media.startsWith("data:image/") ? (
@@ -175,6 +232,9 @@ function ChatRoom({
 										src={message.media}
 										alt="Image"
 										className="message-media"
+										onClick={() =>
+											setLightbox(message.media as string)
+										}
 									/>
 								) : (
 									<video
@@ -190,6 +250,19 @@ function ChatRoom({
 					</div>
 				))}
 			</div>
+			{lightbox && (
+				<div className="lightbox" onClick={() => setLightbox(null)}>
+					<img src={lightbox} alt="Enlarged image" />
+					<button
+						type="button"
+						className="lightbox-close"
+						onClick={() => setLightbox(null)}
+						aria-label="Close image"
+					>
+						×
+					</button>
+				</div>
+			)}
 			<form
 				className="chat-input"
 				onSubmit={(e) => {
@@ -203,6 +276,7 @@ function ChatRoom({
 						content: content.value,
 						user: name,
 						role: "user",
+						timestamp: Date.now(),
 					});
 					content.value = "";
 				}}
@@ -361,6 +435,7 @@ function Sidebar({
 					+
 				</button>
 			</form>
+			<NotificationsButton />
 			<div className="sidebar-footer">
 				<span title={name}>{name}</span>
 				<button type="button" onClick={onChangeName}>
@@ -369,6 +444,43 @@ function Sidebar({
 			</div>
 			</aside>
 		</>
+	);
+}
+
+function NotificationsButton() {
+	const [permission, setPermission] = useState<NotificationPermission>(() =>
+		"Notification" in window ? Notification.permission : "denied",
+	);
+
+	if (!("Notification" in window)) {
+		return (
+			<button type="button" className="sidebar-notify" disabled>
+				Notifications not supported
+			</button>
+		);
+	}
+
+	if (permission === "granted") {
+		return (
+			<button type="button" className="sidebar-notify on" disabled>
+				Notifications on
+			</button>
+		);
+	}
+
+	return (
+		<button
+			type="button"
+			className="sidebar-notify"
+			onClick={async () => {
+				const result = await Notification.requestPermission();
+				setPermission(result);
+			}}
+		>
+			{permission === "denied"
+				? "Notifications blocked"
+				: "Enable notifications"}
+		</button>
 	);
 }
 

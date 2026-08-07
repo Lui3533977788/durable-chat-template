@@ -27,12 +27,21 @@ export class Chat extends Server<Env> {
 
 		// create the messages table if it doesn't exist
 		this.ctx.storage.sql.exec(
-			`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user TEXT, role TEXT, content TEXT, media TEXT)`,
+			`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user TEXT, role TEXT, content TEXT, media TEXT, timestamp INTEGER)`,
 		);
 
 		// add the media column to existing tables (no-op once it exists)
 		try {
 			this.ctx.storage.sql.exec(`ALTER TABLE messages ADD COLUMN media TEXT`);
+		} catch (e) {
+			// column already exists
+		}
+
+		// add the timestamp column to existing tables (no-op once it exists)
+		try {
+			this.ctx.storage.sql.exec(
+				`ALTER TABLE messages ADD COLUMN timestamp INTEGER`,
+			);
 		} catch (e) {
 			// column already exists
 		}
@@ -68,15 +77,17 @@ export class Chat extends Server<Env> {
 
 		// Use parameterized queries to prevent SQL injection
 		this.ctx.storage.sql.exec(
-			`INSERT INTO messages (id, user, role, content, media) VALUES (?, ?, ?, ?, ?)
-			 ON CONFLICT (id) DO UPDATE SET content = ?, media = ?`,
+			`INSERT INTO messages (id, user, role, content, media, timestamp) VALUES (?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (id) DO UPDATE SET content = ?, media = ?, timestamp = ?`,
 			message.id,
 			message.user,
 			message.role,
 			message.content,
 			message.media ?? null,
+			message.timestamp ?? null,
 			message.content,
 			message.media ?? null,
+			message.timestamp ?? null,
 		);
 	}
 
@@ -96,11 +107,17 @@ export class Chat extends Server<Env> {
 	}
 
 	onMessage(connection: Connection, message: WSMessage) {
+		const parsed = JSON.parse(message as string) as Message;
+
+		// stamp the server time on the message (authoritative)
+		if (parsed.type === "add" || parsed.type === "update") {
+			parsed.timestamp = Date.now();
+		}
+
 		// let's broadcast the raw message to everyone else
-		this.broadcast(message);
+		this.broadcast(JSON.stringify(parsed));
 
 		// let's update our local messages store
-		const parsed = JSON.parse(message as string) as Message;
 		if (parsed.type === "add" || parsed.type === "update") {
 			this.saveMessage(parsed);
 		}
