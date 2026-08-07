@@ -5,7 +5,12 @@ import {
 	routePartykitRequest,
 } from "partyserver";
 
-import type { ChatMessage, Message } from "../shared";
+import {
+	normalizeRoomName,
+	type ChatMessage,
+	type Message,
+	type RoomsMessage,
+} from "../shared";
 
 export class Chat extends Server<Env> {
 	static options = { hibernate: true };
@@ -74,6 +79,57 @@ export class Chat extends Server<Env> {
 		const parsed = JSON.parse(message as string) as Message;
 		if (parsed.type === "add" || parsed.type === "update") {
 			this.saveMessage(parsed);
+		}
+	}
+}
+
+export class Rooms extends Server<Env> {
+	static options = { hibernate: true };
+
+	rooms = [] as string[];
+
+	onStart() {
+		this.ctx.storage.sql.exec(
+			`CREATE TABLE IF NOT EXISTS rooms (name TEXT PRIMARY KEY)`,
+		);
+		this.rooms = (
+			this.ctx.storage.sql
+				.exec(`SELECT name FROM rooms ORDER BY name`)
+				.toArray() as Array<{ name: string }>
+		).map((row) => row.name);
+	}
+
+	broadcastRooms() {
+		this.broadcast(
+			JSON.stringify({
+				type: "rooms",
+				rooms: this.rooms,
+			} satisfies RoomsMessage),
+		);
+	}
+
+	onConnect(connection: Connection) {
+		connection.send(
+			JSON.stringify({
+				type: "rooms",
+				rooms: this.rooms,
+			} satisfies RoomsMessage),
+		);
+	}
+
+	createRoom(rawName: string) {
+		const name = normalizeRoomName(rawName);
+		if (!name || this.rooms.includes(name)) return;
+		this.rooms.push(name);
+		this.rooms.sort();
+		this.ctx.storage.sql.exec(`INSERT INTO rooms (name) VALUES (?)`, name);
+		this.broadcastRooms();
+	}
+
+	onMessage(connection: Connection, message: WSMessage) {
+		const parsed = JSON.parse(message as string) as RoomsMessage;
+		if (parsed.type === "create") {
+			this.createRoom(parsed.name);
 		}
 	}
 }

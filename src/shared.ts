@@ -25,6 +25,25 @@ export type Message =
 			messages: ChatMessage[];
 	  };
 
+export type RoomsMessage =
+	| {
+			type: "rooms";
+			rooms: string[];
+	  }
+	| {
+			type: "create";
+			name: string;
+	  };
+
+export function normalizeRoomName(raw: string): string {
+	return raw
+		.trim()
+		.toLowerCase()
+		.replace(/\s+/g, "-")
+		.replace(/[^a-z0-9-_]/g, "")
+		.slice(0, 24);
+}
+
 export const names = [
 	"Alice",
 	"Bob",

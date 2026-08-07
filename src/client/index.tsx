@@ -6,25 +6,27 @@ import {
 	Routes,
 	Route,
 	Navigate,
+	Link,
+	useNavigate,
 	useParams,
 } from "react-router";
 import { nanoid } from "nanoid";
 
-import { type ChatMessage, type Message } from "../shared";
+import {
+	normalizeRoomName,
+	type ChatMessage,
+	type Message,
+	type RoomsMessage,
+} from "../shared";
 
 const USERNAME_KEY = "durable-chat-username";
 
-function App() {
-	const [name, setName] = useState(
-		() => localStorage.getItem(USERNAME_KEY) ?? "",
-	);
+function ChatRoom({ room, name }: { room: string; name: string }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
-	const { room } = useParams();
-	const effectiveRoom = room ?? "main";
 
 	const socket = usePartySocket({
 		party: "chat",
-		room: effectiveRoom,
+		room,
 		onMessage: (evt) => {
 			const message = JSON.parse(evt.data as string) as Message;
 			if (message.type === "add") {
@@ -71,54 +73,12 @@ function App() {
 		},
 	});
 
-	if (!name) {
-		return (
-			<div className="chat">
-				<div className="welcome">
-					<h2>Chat</h2>
-					<p>Pick a username to start chatting with your friends.</p>
-					<form
-						onSubmit={(e) => {
-							e.preventDefault();
-							const input = e.currentTarget.elements.namedItem(
-								"username",
-							) as HTMLInputElement;
-							const username = input.value.trim();
-							if (username) {
-								localStorage.setItem(USERNAME_KEY, username);
-								setName(username);
-							}
-						}}
-					>
-						<input
-							type="text"
-							name="username"
-							placeholder="Enter your username..."
-							autoComplete="off"
-							maxLength={24}
-						/>
-						<button type="submit">Join</button>
-					</form>
-				</div>
-			</div>
-		);
-	}
-
 	return (
 		<div className="chat">
 			<div className="chat-header">
 				<span>
-					Chatting as <b>{name}</b>
+					<b>#{room}</b>
 				</span>
-				<button
-					type="button"
-					onClick={() => {
-						localStorage.removeItem(USERNAME_KEY);
-						setName("");
-					}}
-				>
-					Change name
-				</button>
 			</div>
 			<div className="messages">
 				{messages.map((message) => (
@@ -164,6 +124,158 @@ function App() {
 				/>
 				<button type="submit">Send</button>
 			</form>
+		</div>
+	);
+}
+
+function Sidebar({
+	name,
+	rooms,
+	activeRoom,
+	onCreateRoom,
+	onChangeName,
+}: {
+	name: string;
+	rooms: string[];
+	activeRoom?: string;
+	onCreateRoom: (name: string) => void;
+	onChangeName: () => void;
+}) {
+	const [newRoom, setNewRoom] = useState("");
+
+	return (
+		<aside className="sidebar">
+			<div className="sidebar-header">Chat</div>
+			<div className="sidebar-section">ROOMS</div>
+			<ul className="room-list">
+				{rooms.map((room) => (
+					<li key={room}>
+						<Link
+							to={`/${room}`}
+							className={`room-link ${room === activeRoom ? "active" : ""}`}
+						>
+							# {room}
+						</Link>
+					</li>
+				))}
+			</ul>
+			<form
+				className="new-room"
+				onSubmit={(e) => {
+					e.preventDefault();
+					if (newRoom.trim()) {
+						onCreateRoom(newRoom.trim());
+						setNewRoom("");
+					}
+				}}
+			>
+				<input
+					type="text"
+					value={newRoom}
+					onChange={(e) => setNewRoom(e.target.value)}
+					placeholder="New room..."
+					autoComplete="off"
+					maxLength={24}
+				/>
+				<button type="submit" aria-label="Create room">
+					+
+				</button>
+			</form>
+			<div className="sidebar-footer">
+				<span title={name}>{name}</span>
+				<button type="button" onClick={onChangeName}>
+					Change name
+				</button>
+			</div>
+		</aside>
+	);
+}
+
+function App() {
+	const [name, setName] = useState(
+		() => localStorage.getItem(USERNAME_KEY) ?? "",
+	);
+	const [rooms, setRooms] = useState<string[]>([]);
+	const { room } = useParams();
+	const navigate = useNavigate();
+
+	const roomsSocket = usePartySocket({
+		party: "rooms",
+		room: "registry",
+		onMessage: (evt) => {
+			const message = JSON.parse(evt.data as string) as RoomsMessage;
+			if (message.type === "rooms") {
+				setRooms(message.rooms);
+			}
+		},
+	});
+
+	if (!name) {
+		return (
+			<div className="chat">
+				<div className="welcome">
+					<h2>Chat</h2>
+					<p>Pick a username to start chatting with your friends.</p>
+					<form
+						onSubmit={(e) => {
+							e.preventDefault();
+							const input = e.currentTarget.elements.namedItem(
+								"username",
+							) as HTMLInputElement;
+							const username = input.value.trim();
+							if (username) {
+								localStorage.setItem(USERNAME_KEY, username);
+								setName(username);
+							}
+						}}
+					>
+						<input
+							type="text"
+							name="username"
+							placeholder="Enter your username..."
+							autoComplete="off"
+							maxLength={24}
+						/>
+						<button type="submit">Join</button>
+					</form>
+				</div>
+			</div>
+		);
+	}
+
+	return (
+		<div className="app-layout">
+			<Sidebar
+				name={name}
+				rooms={rooms}
+				activeRoom={room}
+				onCreateRoom={(value) => {
+					const normalized = normalizeRoomName(value);
+					if (!normalized) return;
+					roomsSocket.send(
+						JSON.stringify({
+							type: "create",
+							name: normalized,
+						} satisfies RoomsMessage),
+					);
+					navigate(`/${normalized}`);
+				}}
+				onChangeName={() => {
+					localStorage.removeItem(USERNAME_KEY);
+					setName("");
+				}}
+			/>
+			{room ? (
+				<ChatRoom room={room} name={name} />
+			) : (
+				<div className="empty-state">
+					<h3>Welcome to Chat</h3>
+					<p>
+						Pick a room on the left, or create a new one to start
+						chatting.
+					</p>
+				</div>
+			)}
 		</div>
 	);
 }

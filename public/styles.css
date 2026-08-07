@@ -19,13 +19,155 @@ html {
 	overflow: hidden;
 }
 
+.app-layout {
+	flex: 1;
+	display: flex;
+	height: 100%;
+	overflow: hidden;
+}
+
+.sidebar {
+	width: 240px;
+	flex-shrink: 0;
+	background: #16213e;
+	border-right: 1px solid #2a2a4a;
+	display: flex;
+	flex-direction: column;
+}
+
+.sidebar-header {
+	padding: 16px 20px;
+	font-size: 18px;
+	font-weight: 700;
+	color: #fff;
+	border-bottom: 1px solid #2a2a4a;
+}
+
+.sidebar-section {
+	padding: 14px 20px 6px;
+	font-size: 11px;
+	letter-spacing: 0.08em;
+	color: #666;
+	font-weight: 600;
+}
+
+.room-list {
+	list-style: none;
+	margin: 0;
+	padding: 4px 8px;
+	flex: 1;
+	overflow-y: auto;
+}
+
+.room-list li {
+	margin: 2px 0;
+}
+
+.room-link {
+	display: block;
+	padding: 8px 12px;
+	border-radius: 8px;
+	color: #999;
+	text-decoration: none;
+	font-size: 14px;
+	transition: background 0.15s, color 0.15s;
+}
+
+.room-link:hover {
+	background: #2a2a4a;
+	color: #e0e0e0;
+}
+
+.room-link.active {
+	background: #0f3460;
+	color: #fff;
+}
+
+.new-room {
+	display: flex;
+	gap: 6px;
+	padding: 12px;
+	border-top: 1px solid #2a2a4a;
+}
+
+.new-room input {
+	flex: 1;
+	min-width: 0;
+	background: #2a2a4a;
+	border: none;
+	border-radius: 8px;
+	padding: 8px 12px;
+	color: #e0e0e0;
+	font-size: 13px;
+	outline: none;
+	font-family: inherit;
+}
+
+.new-room input::placeholder {
+	color: #555;
+}
+
+.new-room input:focus {
+	background: #333355;
+}
+
+.new-room button {
+	flex-shrink: 0;
+	background: #0f3460;
+	border: none;
+	color: #fff;
+	border-radius: 8px;
+	width: 36px;
+	cursor: pointer;
+	font-size: 18px;
+	line-height: 1;
+	transition: background 0.15s;
+}
+
+.new-room button:hover {
+	background: #1a4a80;
+}
+
+.sidebar-footer {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+	padding: 12px;
+	border-top: 1px solid #2a2a4a;
+}
+
+.sidebar-footer span {
+	font-size: 13px;
+	color: #ccc;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.sidebar-footer button {
+	flex-shrink: 0;
+	background: none;
+	border: 1px solid #3a3a5a;
+	color: #999;
+	padding: 4px 10px;
+	border-radius: 6px;
+	cursor: pointer;
+	font-size: 12px;
+	transition: background 0.15s, color 0.15s;
+}
+
+.sidebar-footer button:hover {
+	background: #2a2a4a;
+	color: #ddd;
+}
+
 .chat {
 	display: flex;
 	flex-direction: column;
+	flex: 1;
+	min-width: 0;
 	height: 100%;
-	max-width: 800px;
-	margin: 0 auto;
-	width: 100%;
 }
 
 .chat-header {
@@ -229,4 +371,26 @@ html {
 
 .welcome button:hover {
 	background: #1a4a80;
+}
+
+.empty-state {
+	flex: 1;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	padding: 20px;
+}
+
+.empty-state h3 {
+	color: #fff;
+	margin: 0 0 8px;
+	font-size: 22px;
+}
+
+.empty-state p {
+	color: #888;
+	margin: 0;
+	font-size: 14px;
 }
