@@ -41,6 +41,30 @@ html {
 	font-weight: 700;
 	color: #fff;
 	border-bottom: 1px solid #2a2a4a;
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 8px;
+}
+
+.sidebar-close {
+	display: none;
+	background: none;
+	border: none;
+	color: #999;
+	font-size: 22px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 4px;
+	font-family: inherit;
+}
+
+.sidebar-close:hover {
+	color: #fff;
+}
+
+.sidebar-backdrop {
+	display: none;
 }
 
 .sidebar-section {
@@ -247,6 +271,32 @@ html {
 .chat-header span {
 	font-size: 14px;
 	color: #ccc;
+	flex: 1;
+	min-width: 0;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.menu-button {
+	display: none;
+	background: none;
+	border: 1px solid #3a3a5a;
+	color: #e0e0e0;
+	border-radius: 8px;
+	width: 36px;
+	height: 36px;
+	cursor: pointer;
+	font-size: 16px;
+	line-height: 1;
+	flex-shrink: 0;
+	padding: 0;
+	transition: background 0.15s, color 0.15s;
+}
+
+.menu-button:hover {
+	background: #2a2a4a;
+	color: #fff;
 }
 
 .chat-header button {
@@ -485,4 +535,124 @@ html {
 	color: #888;
 	margin: 0;
 	font-size: 14px;
+}
+
+.empty-state-button {
+	background: #0f3460;
+	border: none;
+	color: #fff;
+	border-radius: 20px;
+	padding: 10px 26px;
+	cursor: pointer;
+	font-size: 14px;
+	font-weight: 600;
+	font-family: inherit;
+	margin-top: 20px;
+	transition: background 0.15s;
+}
+
+.empty-state-button:hover {
+	background: #1a4a80;
+}
+
+@media (max-width: 768px) {
+	#root {
+		height: 100dvh;
+	}
+
+	.menu-button {
+		display: block;
+	}
+
+	.sidebar {
+		position: fixed;
+		top: 0;
+		left: 0;
+		bottom: 0;
+		width: 280px;
+		max-width: 85vw;
+		z-index: 30;
+		transform: translateX(-100%);
+		transition: transform 0.25s ease;
+		box-shadow: none;
+	}
+
+	.sidebar.open {
+		transform: translateX(0);
+		box-shadow: 0 0 40px rgba(0, 0, 0, 0.6);
+	}
+
+	.sidebar-backdrop {
+		display: block;
+		position: fixed;
+		inset: 0;
+		background: rgba(0, 0, 0, 0.5);
+		z-index: 20;
+		opacity: 0;
+		pointer-events: none;
+		transition: opacity 0.25s ease;
+	}
+
+	.sidebar-backdrop.open {
+		opacity: 1;
+		pointer-events: auto;
+	}
+
+	.sidebar-close {
+		display: block;
+	}
+
+	.room-actions {
+		display: flex;
+	}
+
+	.room-actions button {
+		font-size: 12px;
+		padding: 6px 8px;
+	}
+
+	.room-link {
+		padding: 12px;
+		font-size: 15px;
+	}
+
+	.chat-header {
+		padding: 10px 12px;
+		gap: 10px;
+	}
+
+	.messages {
+		padding: 12px;
+	}
+
+	.message {
+		max-width: 85%;
+	}
+
+	.message-media {
+		max-width: 100%;
+		max-height: 260px;
+	}
+
+	.chat-input {
+		padding: 8px 10px;
+		gap: 6px;
+	}
+
+	.chat-input input {
+		font-size: 16px;
+		padding: 10px 14px;
+	}
+
+	.media-button {
+		padding: 10px 12px;
+	}
+
+	.welcome input {
+		font-size: 16px;
+	}
+
+	.welcome {
+		padding: 20px 16px;
+	}
 }

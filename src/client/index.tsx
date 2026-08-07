@@ -21,7 +21,15 @@ import {
 
 const USERNAME_KEY = "durable-chat-username";
 
-function ChatRoom({ room, name }: { room: string; name: string }) {
+function ChatRoom({
+	room,
+	name,
+	onOpenSidebar,
+}: {
+	room: string;
+	name: string;
+	onOpenSidebar: () => void;
+}) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
 
 	const sendMessage = (chatMessage: ChatMessage) => {
@@ -114,6 +122,14 @@ function ChatRoom({ room, name }: { room: string; name: string }) {
 	return (
 		<div className="chat">
 			<div className="chat-header">
+				<button
+					type="button"
+					className="menu-button"
+					onClick={onOpenSidebar}
+					aria-label="Open rooms"
+				>
+					☰
+				</button>
 				<span>
 					<b>#{room}</b>
 				</span>
@@ -193,6 +209,8 @@ function Sidebar({
 	name,
 	rooms,
 	activeRoom,
+	open,
+	onClose,
 	onCreateRoom,
 	onRename,
 	onDelete,
@@ -201,6 +219,8 @@ function Sidebar({
 	name: string;
 	rooms: string[];
 	activeRoom?: string;
+	open: boolean;
+	onClose: () => void;
 	onCreateRoom: (name: string) => void;
 	onRename: (oldName: string, newName: string) => void;
 	onDelete: (name: string) => void;
@@ -218,9 +238,24 @@ function Sidebar({
 	};
 
 	return (
-		<aside className="sidebar">
-			<div className="sidebar-header">Chat</div>
-			<div className="sidebar-section">ROOMS</div>
+		<>
+			<div
+				className={`sidebar-backdrop ${open ? "open" : ""}`}
+				onClick={onClose}
+			/>
+			<aside className={`sidebar ${open ? "open" : ""}`}>
+				<div className="sidebar-header">
+					Chat
+					<button
+						type="button"
+						className="sidebar-close"
+						onClick={onClose}
+						aria-label="Close rooms"
+					>
+						×
+					</button>
+				</div>
+				<div className="sidebar-section">ROOMS</div>
 			<ul className="room-list">
 				{rooms.map((room) =>
 					renaming === room ? (
@@ -305,7 +340,8 @@ function Sidebar({
 					Change name
 				</button>
 			</div>
-		</aside>
+			</aside>
+		</>
 	);
 }
 
@@ -315,6 +351,7 @@ function App() {
 	);
 	const [rooms, setRooms] = useState<string[]>([]);
 	const [roomsLoaded, setRoomsLoaded] = useState(false);
+	const [sidebarOpen, setSidebarOpen] = useState(false);
 	const { room } = useParams();
 	const navigate = useNavigate();
 
@@ -336,6 +373,11 @@ function App() {
 			navigate("/");
 		}
 	}, [roomsLoaded, room, rooms, navigate]);
+
+	useEffect(() => {
+		// close the mobile sidebar whenever we navigate to a room
+		setSidebarOpen(false);
+	}, [room]);
 
 	if (!name) {
 		return (
@@ -376,6 +418,8 @@ function App() {
 				name={name}
 				rooms={rooms}
 				activeRoom={room}
+				open={sidebarOpen}
+				onClose={() => setSidebarOpen(false)}
 				onCreateRoom={(value) => {
 					const normalized = normalizeRoomName(value);
 					if (!normalized) return;
@@ -416,14 +460,22 @@ function App() {
 				}}
 			/>
 			{room ? (
-				<ChatRoom room={room} name={name} />
+				<ChatRoom
+					room={room}
+					name={name}
+					onOpenSidebar={() => setSidebarOpen(true)}
+				/>
 			) : (
 				<div className="empty-state">
 					<h3>Welcome to Chat</h3>
-					<p>
-						Pick a room on the left, or create a new one to start
-						chatting.
-					</p>
+					<p>Pick a room, or create a new one to start chatting.</p>
+					<button
+						type="button"
+						className="empty-state-button"
+						onClick={() => setSidebarOpen(true)}
+					>
+						Browse rooms
+					</button>
 				</div>
 			)}
 		</div>
