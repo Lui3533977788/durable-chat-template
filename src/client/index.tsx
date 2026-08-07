@@ -1,6 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { usePartySocket } from "partysocket/react";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import {
 	BrowserRouter,
 	Routes,
@@ -31,6 +31,25 @@ function ChatRoom({
 	onOpenSidebar: () => void;
 }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	const messagesRef = useRef<HTMLDivElement>(null);
+	const nearBottomRef = useRef(true);
+
+	useEffect(() => {
+		// keep scrolled to the latest message unless the user scrolled up
+		const el = messagesRef.current;
+		if (el && nearBottomRef.current) {
+			el.scrollTop = el.scrollHeight;
+		}
+	}, [messages]);
+
+	useEffect(() => {
+		// always jump to the latest message when switching rooms
+		const el = messagesRef.current;
+		if (el) {
+			nearBottomRef.current = true;
+			el.scrollTop = el.scrollHeight;
+		}
+	}, [room]);
 
 	const sendMessage = (chatMessage: ChatMessage) => {
 		setMessages((messages) => [...messages, chatMessage]);
@@ -134,7 +153,15 @@ function ChatRoom({
 					<b>#{room}</b>
 				</span>
 			</div>
-			<div className="messages">
+			<div
+				className="messages"
+				ref={messagesRef}
+				onScroll={(e) => {
+					const el = e.currentTarget;
+					nearBottomRef.current =
+						el.scrollHeight - el.scrollTop - el.clientHeight < 100;
+				}}
+			>
 				{messages.map((message) => (
 					<div
 						key={message.id}

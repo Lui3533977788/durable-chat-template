@@ -414,6 +414,7 @@ html {
 
 .chat-input input {
 	flex: 1;
+	min-width: 0;
 	background: #2a2a4a;
 	border: none;
 	border-radius: 20px;
@@ -637,6 +638,10 @@ html {
 	.chat-input {
 		padding: 8px 10px;
 		gap: 6px;
+	}
+
+	.chat-input button {
+		padding: 10px 14px;
 	}
 
 	.chat-input input {
