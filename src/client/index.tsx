@@ -353,9 +353,9 @@ function ChatRoom({
 					</button>
 				</div>
 			)}
-			<div className="typing-bar">
+			<div className="composer">
 				{typingUsers.length > 0 && (
-					<span>
+					<div className="typing-row">
 						<span className="typing-dots">
 							<span />
 							<span />
@@ -366,78 +366,81 @@ function ChatRoom({
 							: `${typingUsers
 									.slice(0, 2)
 									.join(", ")}${typingUsers.length > 2 ? " and others" : ""} are typing…`}
-					</span>
+					</div>
 				)}
-			</div>
-			{replyTo && (
-				<div className="reply-bar">
-					<span className="reply-bar-label">
-						Replying to <b>{replyTo.user}</b>: {replyPreview(replyTo)}
-					</span>
-					<button
-						type="button"
-						className="reply-bar-close"
-						onClick={() => setReplyTo(null)}
-						aria-label="Cancel reply"
-					>
-						×
-					</button>
-				</div>
-			)}
-			<form
-				className="chat-input"
-				onSubmit={(e) => {
-					e.preventDefault();
-					if (!draft.trim()) return;
-					sendMessage({
-						id: nanoid(8),
-						content: draft,
-						user: name,
-						role: "user",
-						timestamp: Date.now(),
-						replyTo: replyTo
-							? {
-									id: replyTo.id,
-									user: replyTo.user,
-									content: replyPreview(replyTo),
-								}
-							: undefined,
-					});
-					setDraft("");
-					setReplyTo(null);
-					sendTyping(true);
-				}}
-			>
-				<label className="media-button" title="Attach image or video">
-					<input
-						type="file"
-						accept="image/*,video/*"
-						onChange={(e) => {
-							const file = e.currentTarget.files?.[0];
-							if (file) handleFile(file);
-							e.currentTarget.value = "";
-						}}
-						hidden
-					/>
-					Media
-				</label>
-				<input
-					type="text"
-					name="content"
-					value={draft}
-					onChange={(e) => {
-						setDraft(e.target.value);
-						if (e.target.value.trim()) {
-							sendTyping(false);
-						} else {
-							sendTyping(true);
-						}
+				{replyTo && (
+					<div className="reply-bar">
+						<span className="reply-bar-label">
+							Replying to <b>{replyTo.user}</b>: {replyPreview(replyTo)}
+						</span>
+						<button
+							type="button"
+							className="reply-bar-close"
+							onClick={() => setReplyTo(null)}
+							aria-label="Cancel reply"
+						>
+							×
+						</button>
+					</div>
+				)}
+				<form
+					className="chat-input"
+					onSubmit={(e) => {
+						e.preventDefault();
+						if (!draft.trim()) return;
+						sendMessage({
+							id: nanoid(8),
+							content: draft,
+							user: name,
+							role: "user",
+							timestamp: Date.now(),
+							replyTo: replyTo
+								? {
+										id: replyTo.id,
+										user: replyTo.user,
+										content: replyPreview(replyTo),
+									}
+								: undefined,
+						});
+						setDraft("");
+						setReplyTo(null);
+						sendTyping(true);
 					}}
-					placeholder={`Message ${name}...`}
-					autoComplete="off"
-				/>
-				<button type="submit">Send</button>
-			</form>
+				>
+					<label
+						className="media-button"
+						title="Attach image or video"
+					>
+						<input
+							type="file"
+							accept="image/*,video/*"
+							onChange={(e) => {
+								const file = e.currentTarget.files?.[0];
+								if (file) handleFile(file);
+								e.currentTarget.value = "";
+							}}
+							hidden
+						/>
+						+
+					</label>
+					<input
+						type="text"
+						name="content"
+						value={draft}
+						onChange={(e) => {
+							setDraft(e.target.value);
+							if (e.target.value.trim()) {
+								sendTyping(false);
+							} else {
+								sendTyping(true);
+							}
+						}}
+						placeholder={`Message ${name}...`}
+						autoComplete="off"
+					/>
+					<button type="submit">Send</button>
+				</form>
+			</div>
 		</div>
 	);
 }
