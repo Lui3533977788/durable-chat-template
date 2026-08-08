@@ -410,6 +410,7 @@ function ChatRoom({
 					<label
 						className="media-button"
 						title="Attach image or video"
+						aria-label="Attach image or video"
 					>
 						<input
 							type="file"
@@ -421,7 +422,6 @@ function ChatRoom({
 							}}
 							hidden
 						/>
-						+
 					</label>
 					<input
 						type="text"

@@ -649,6 +649,7 @@ html {
 }
 
 .media-button {
+	position: relative;
 	background: none;
 	border: none;
 	color: #888;
@@ -656,14 +657,29 @@ html {
 	width: 40px;
 	height: 40px;
 	cursor: pointer;
-	font-size: 22px;
-	line-height: 1;
 	flex-shrink: 0;
-	display: flex;
-	align-items: center;
-	justify-content: center;
-	transform: translateY(1px);
 	transition: background 0.15s, color 0.15s;
+}
+
+.media-button::before,
+.media-button::after {
+	content: "";
+	position: absolute;
+	top: 50%;
+	left: 50%;
+	transform: translate(-50%, -50%);
+	background: currentColor;
+	border-radius: 1px;
+}
+
+.media-button::before {
+	width: 14px;
+	height: 2px;
+}
+
+.media-button::after {
+	width: 2px;
+	height: 14px;
 }
 
 .media-button:hover {
