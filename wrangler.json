@@ -10,6 +10,10 @@
 		{
 			"new_sqlite_classes": ["Rooms"],
 			"tag": "v2"
+		},
+		{
+			"new_sqlite_classes": ["Accounts"],
+			"tag": "v3"
 		}
 	],
 	"assets": {
@@ -29,6 +33,10 @@
 			{
 				"class_name": "Rooms",
 				"name": "Rooms"
+			},
+			{
+				"class_name": "Accounts",
+				"name": "Accounts"
 			}
 		]
 	},

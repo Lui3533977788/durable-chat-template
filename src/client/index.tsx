@@ -14,12 +14,30 @@ import { nanoid } from "nanoid";
 
 import {
 	normalizeRoomName,
+	type AccountInfo,
+	type AccountMessage,
 	type ChatMessage,
 	type Message,
 	type RoomsMessage,
 } from "../shared";
 
-const USERNAME_KEY = "durable-chat-username";
+const SESSION_KEY = "durable-chat-session";
+const THEME_KEY = "durable-chat-theme";
+const NOTIFS_KEY = "durable-chat-notifs";
+const OLD_USERNAME_KEY = "durable-chat-username";
+
+type Session = { id: string; name: string; token: string };
+
+function loadSession(): Session | null {
+	try {
+		const raw = localStorage.getItem(SESSION_KEY);
+		if (!raw) return null;
+		const parsed = JSON.parse(raw) as Session;
+		return parsed && parsed.token ? parsed : null;
+	} catch (e) {
+		return null;
+	}
+}
 
 function formatTime(ts: number): string {
 	const date = new Date(ts);
@@ -54,13 +72,24 @@ function replyPreview(m: ChatMessage): string {
 	return text.length > 60 ? `${text.slice(0, 60)}…` : text;
 }
 
+function isSelf(
+	message: { userId?: string; user: string },
+	account: AccountInfo,
+): boolean {
+	return message.userId === account.id || message.user === account.name;
+}
+
 function ChatRoom({
 	room,
-	name,
+	account,
+	token,
+	notifsPref,
 	onOpenSidebar,
 }: {
 	room: string;
-	name: string;
+	account: AccountInfo;
+	token: string;
+	notifsPref: boolean;
 	onOpenSidebar: () => void;
 }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -106,7 +135,7 @@ function ChatRoom({
 			socket.send(
 				JSON.stringify({
 					type: "typing-stop",
-					user: name,
+					user: account.name,
 				} satisfies Message),
 			);
 			return;
@@ -118,7 +147,7 @@ function ChatRoom({
 		socket.send(
 			JSON.stringify({
 				type: "typing-start",
-				user: name,
+				user: account.name,
 			} satisfies Message),
 		);
 	};
@@ -158,7 +187,8 @@ function ChatRoom({
 			sendMessage({
 				id: nanoid(8),
 				content: "",
-				user: name,
+				user: account.name,
+				userId: account.id,
 				role: "user",
 				media,
 				timestamp: Date.now(),
@@ -181,14 +211,19 @@ function ChatRoom({
 	const socket = usePartySocket({
 		party: "chat",
 		room,
+		query: { token },
 		onMessage: (evt) => {
 			const message = JSON.parse(evt.data as string) as Message;
 			if (message.type === "typing") {
-				setTypingUsers(message.users.filter((u) => u !== name));
+				setTypingUsers(message.users.filter((u) => u !== account.name));
 				return;
 			}
 			if (message.type === "add") {
-				if (message.user !== name && document.hidden) {
+				if (
+					!isSelf(message, account) &&
+					document.hidden &&
+					notifsPref
+				) {
 					notify(
 						`#${room}: ${message.user}`,
 						message.media
@@ -206,6 +241,7 @@ function ChatRoom({
 							id: message.id,
 							content: message.content,
 							user: message.user,
+							userId: message.userId,
 							role: message.role,
 							media: message.media,
 							timestamp: message.timestamp,
@@ -220,6 +256,7 @@ function ChatRoom({
 								id: message.id,
 								content: message.content,
 								user: message.user,
+								userId: message.userId,
 								role: message.role,
 								media: message.media,
 								timestamp: message.timestamp,
@@ -236,6 +273,7 @@ function ChatRoom({
 									id: message.id,
 									content: message.content,
 									user: message.user,
+									userId: message.userId,
 									role: message.role,
 									media: message.media,
 									timestamp: message.timestamp,
@@ -278,9 +316,9 @@ function ChatRoom({
 					<div
 						key={message.id}
 						data-mid={message.id}
-						className={`message ${message.user === name ? "self" : ""} ${
-							message.id === highlightId ? "highlighted" : ""
-						}`}
+						className={`message ${
+							isSelf(message, account) ? "self" : ""
+						} ${message.id === highlightId ? "highlighted" : ""}`}
 					>
 						<div className="user">
 							{message.user}
@@ -391,7 +429,8 @@ function ChatRoom({
 						sendMessage({
 							id: nanoid(8),
 							content: draft,
-							user: name,
+							user: account.name,
+							userId: account.id,
 							role: "user",
 							timestamp: Date.now(),
 							replyTo: replyTo
@@ -435,7 +474,7 @@ function ChatRoom({
 								sendTyping(true);
 							}
 						}}
-						placeholder={`Message ${name}...`}
+						placeholder={`Message ${account.name}...`}
 						autoComplete="off"
 					/>
 					<button type="submit">Send</button>
@@ -454,7 +493,7 @@ function Sidebar({
 	onCreateRoom,
 	onRename,
 	onDelete,
-	onChangeName,
+	onOpenSettings,
 }: {
 	name: string;
 	rooms: string[];
@@ -464,7 +503,7 @@ function Sidebar({
 	onCreateRoom: (name: string) => void;
 	onRename: (oldName: string, newName: string) => void;
 	onDelete: (name: string) => void;
-	onChangeName: () => void;
+	onOpenSettings: () => void;
 }) {
 	const [newRoom, setNewRoom] = useState("");
 	const [renaming, setRenaming] = useState<string | null>(null);
@@ -574,11 +613,16 @@ function Sidebar({
 					+
 				</button>
 			</form>
-			<NotificationsButton />
 			<div className="sidebar-footer">
 				<span title={name}>{name}</span>
-				<button type="button" onClick={onChangeName}>
-					Change name
+				<button
+					type="button"
+					className="sidebar-settings"
+					onClick={onOpenSettings}
+					aria-label="Open settings"
+					title="Settings"
+				>
+					⚙
 				</button>
 			</div>
 			</aside>
@@ -586,52 +630,339 @@ function Sidebar({
 	);
 }
 
-function NotificationsButton() {
-	const [permission, setPermission] = useState<NotificationPermission>(() =>
-		"Notification" in window ? Notification.permission : "denied",
-	);
+function AccountsGate({
+	onMessage,
+	children,
+}: {
+	onMessage: (m: AccountMessage) => void;
+	children: (send: (msg: AccountMessage) => void) => React.ReactNode;
+}) {
+	const socket = usePartySocket({
+		party: "accounts",
+		room: "registry",
+		onMessage: (evt) => {
+			onMessage(JSON.parse(evt.data as string) as AccountMessage);
+		},
+	});
+	return <>{children((msg) => socket.send(JSON.stringify(msg)))}</>;
+}
 
-	if (!("Notification" in window)) {
-		return (
-			<button type="button" className="sidebar-notify" disabled>
-				Notifications not supported
-			</button>
-		);
-	}
+function Welcome({
+	initialName,
+	error,
+	onAuth,
+}: {
+	initialName: string;
+	error: string | null;
+	onAuth: (msg: AccountMessage) => void;
+}) {
+	const [mode, setMode] = useState<"login" | "signup">("signup");
+	const [name, setName] = useState(initialName);
+	const [password, setPassword] = useState("");
+	const [confirm, setConfirm] = useState("");
+	const [remember, setRemember] = useState(true);
+	const [localError, setLocalError] = useState<string | null>(null);
 
-	if (permission === "granted") {
-		return (
-			<button type="button" className="sidebar-notify on" disabled>
-				Notifications on
-			</button>
+	const errorMsg = localError ?? error;
+
+	const submit = (e: React.FormEvent<HTMLFormElement>) => {
+		e.preventDefault();
+		const trimmed = name.trim();
+		if (!trimmed) {
+			setLocalError("Pick a name.");
+			return;
+		}
+		if (mode === "signup" && password.length < 6) {
+			setLocalError("Password must be at least 6 characters.");
+			return;
+		}
+		if (mode === "signup" && password !== confirm) {
+			setLocalError("Passwords don't match.");
+			return;
+		}
+		setLocalError(null);
+		onAuth(
+			mode === "signup"
+				? { type: "register", name: trimmed, password, remember }
+				: { type: "login", name: trimmed, password, remember },
 		);
-	}
+	};
 
 	return (
-		<button
-			type="button"
-			className="sidebar-notify"
-			onClick={async () => {
-				const result = await Notification.requestPermission();
-				setPermission(result);
-			}}
-		>
-			{permission === "denied"
-				? "Notifications blocked"
-				: "Enable notifications"}
-		</button>
+		<div className="chat">
+			<div className="welcome">
+				<h2>Chat</h2>
+				<p>
+					Pick a name and a password so nobody can chat as you.
+				</p>
+				<div className="auth-tabs">
+					<button
+						type="button"
+						className={mode === "signup" ? "active" : ""}
+						onClick={() => {
+							setMode("signup");
+							setLocalError(null);
+						}}
+					>
+						Create account
+					</button>
+					<button
+						type="button"
+						className={mode === "login" ? "active" : ""}
+						onClick={() => {
+							setMode("login");
+							setLocalError(null);
+						}}
+					>
+						Log in
+					</button>
+				</div>
+				<form className="auth-form" onSubmit={submit}>
+					<input
+						type="text"
+						value={name}
+						onChange={(e) => setName(e.target.value)}
+						placeholder="Name"
+						maxLength={24}
+						autoComplete="username"
+					/>
+					<input
+						type="password"
+						value={password}
+						onChange={(e) => setPassword(e.target.value)}
+						placeholder="Password"
+						autoComplete={
+							mode === "signup" ? "new-password" : "current-password"
+						}
+					/>
+					{mode === "signup" && (
+						<input
+							type="password"
+							value={confirm}
+							onChange={(e) => setConfirm(e.target.value)}
+							placeholder="Repeat password"
+							autoComplete="new-password"
+						/>
+					)}
+					<label className="auth-remember">
+						<input
+							type="checkbox"
+							checked={remember}
+							onChange={(e) => setRemember(e.target.checked)}
+						/>
+						Keep me signed in on this browser
+					</label>
+					{errorMsg && <p className="auth-error">{errorMsg}</p>}
+					<button type="submit">
+						{mode === "signup" ? "Create account" : "Log in"}
+					</button>
+				</form>
+			</div>
+		</div>
+	);
+}
+
+function SettingsModal({
+	account,
+	token,
+	notifsPref,
+	onToggleNotifs,
+	theme,
+	onSetTheme,
+	notice,
+	onClearNotice,
+	onClose,
+	onSignOut,
+	send,
+}: {
+	account: AccountInfo;
+	token: string;
+	notifsPref: boolean;
+	onToggleNotifs: (value: boolean) => void;
+	theme: "dark" | "light";
+	onSetTheme: (theme: "dark" | "light") => void;
+	notice: { ok: boolean; text: string } | null;
+	onClearNotice: () => void;
+	onClose: () => void;
+	onSignOut: () => void;
+	send: (msg: AccountMessage) => void;
+}) {
+	const [nameInput, setNameInput] = useState(account.name);
+	const [notifHint, setNotifHint] = useState<string | null>(null);
+
+	useEffect(() => {
+		if (!notice) return;
+		const t = setTimeout(onClearNotice, 2500);
+		return () => clearTimeout(t);
+	}, [notice, onClearNotice]);
+
+	const saveName = () => {
+		const newName = nameInput.trim();
+		if (!newName || newName === account.name) return;
+		send({ type: "rename", token, newName });
+	};
+
+	const toggleNotifs = async () => {
+		setNotifHint(null);
+		if (notifsPref) {
+			onToggleNotifs(false);
+			return;
+		}
+		if (!("Notification" in window)) {
+			setNotifHint("This browser doesn't support notifications.");
+			return;
+		}
+		const result = await Notification.requestPermission();
+		if (result === "granted") {
+			onToggleNotifs(true);
+		} else if (result === "denied") {
+			setNotifHint(
+				"Blocked by the browser. Allow notifications for this site in your browser settings.",
+			);
+		} else {
+			setNotifHint("Notifications not enabled.");
+		}
+	};
+
+	const signOut = () => {
+		send({ type: "logout", token });
+		onSignOut();
+	};
+
+	return (
+		<div className="settings-overlay" onClick={onClose}>
+			<div
+				className="settings-modal"
+				onClick={(e) => e.stopPropagation()}
+			>
+				<div className="settings-header">
+					Settings
+					<button
+						type="button"
+						className="settings-close"
+						onClick={onClose}
+						aria-label="Close settings"
+					>
+						×
+					</button>
+				</div>
+				<div className="settings-body">
+					<div className="settings-section">ACCOUNT</div>
+					<div className="settings-row">
+						<span className="settings-label">Signed in as</span>
+						<span className="settings-value">{account.name}</span>
+					</div>
+					<form
+						className="settings-rename"
+						onSubmit={(e) => {
+							e.preventDefault();
+							saveName();
+						}}
+					>
+						<input
+							type="text"
+							value={nameInput}
+							onChange={(e) => setNameInput(e.target.value)}
+							placeholder="Account name"
+							maxLength={24}
+							autoComplete="off"
+						/>
+						<button type="submit">Save</button>
+					</form>
+
+					<div className="settings-section">NOTIFICATIONS</div>
+					<div className="settings-row">
+						<span className="settings-label">
+							New message notifications
+						</span>
+						<button
+							type="button"
+							role="switch"
+							aria-checked={notifsPref}
+							className={`switch ${notifsPref ? "on" : ""}`}
+							onClick={toggleNotifs}
+						>
+							<span className="switch-knob" />
+						</button>
+					</div>
+					{notifHint && <p className="settings-hint">{notifHint}</p>}
+
+					<div className="settings-section">APPEARANCE</div>
+					<div className="settings-row">
+						<span className="settings-label">Theme</span>
+						<div className="theme-toggle">
+							<button
+								type="button"
+								className={theme === "dark" ? "active" : ""}
+								onClick={() => onSetTheme("dark")}
+							>
+								Dark
+							</button>
+							<button
+								type="button"
+								className={theme === "light" ? "active" : ""}
+								onClick={() => onSetTheme("light")}
+							>
+								Light
+							</button>
+						</div>
+					</div>
+
+					{notice && (
+						<p
+							className={`settings-notice ${
+								notice.ok ? "ok" : "error"
+							}`}
+						>
+							{notice.text}
+						</p>
+					)}
+
+					<div className="settings-section">SESSION</div>
+					<button
+						type="button"
+						className="settings-signout"
+						onClick={signOut}
+					>
+						Sign out
+					</button>
+					<p className="settings-hint">
+						Signing out removes this browser from the account. You can
+						log back in with your name and password.
+					</p>
+				</div>
+			</div>
+		</div>
 	);
 }
 
 function App() {
-	const [name, setName] = useState(
-		() => localStorage.getItem(USERNAME_KEY) ?? "",
-	);
+	const [session, setSession] = useState<Session | null>(() => loadSession());
 	const [rooms, setRooms] = useState<string[]>([]);
 	const [roomsLoaded, setRoomsLoaded] = useState(false);
 	const [sidebarOpen, setSidebarOpen] = useState(false);
+	const [settingsOpen, setSettingsOpen] = useState(false);
+	const [authError, setAuthError] = useState<string | null>(null);
+	const [accountNotice, setAccountNotice] = useState<{
+		ok: boolean;
+		text: string;
+	} | null>(null);
+	const [notifsPref, setNotifsPref] = useState(
+		() => localStorage.getItem(NOTIFS_KEY) === "on",
+	);
+	const [theme, setTheme] = useState<"dark" | "light">(() =>
+		localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark",
+	);
 	const { room } = useParams();
 	const navigate = useNavigate();
+
+	useEffect(() => {
+		document.documentElement.dataset.theme = theme;
+		localStorage.setItem(THEME_KEY, theme);
+	}, [theme]);
+
+	const account = session ? { id: session.id, name: session.name } : null;
+	const token = session?.token ?? null;
 
 	const roomsSocket = usePartySocket({
 		party: "rooms",
@@ -657,43 +988,63 @@ function App() {
 		setSidebarOpen(false);
 	}, [room]);
 
-	if (!name) {
+	const handleAccountMessage = (m: AccountMessage) => {
+		if (m.type === "registered" || m.type === "logged-in") {
+			if (m.remember) {
+				localStorage.setItem(
+					SESSION_KEY,
+					JSON.stringify({ id: m.id, name: m.name, token: m.token }),
+				);
+			}
+			setSession({ id: m.id, name: m.name, token: m.token });
+			setAuthError(null);
+			setAccountNotice(null);
+		} else if (m.type === "renamed") {
+			setSession((prev) => {
+				const next = prev ? { ...prev, name: m.name } : prev;
+				if (next && localStorage.getItem(SESSION_KEY)) {
+					localStorage.setItem(SESSION_KEY, JSON.stringify(next));
+				}
+				return next;
+			});
+			setAccountNotice({ ok: true, text: `Name changed to "${m.name}".` });
+		} else if (m.type === "error") {
+			if (m.code === "session") {
+				localStorage.removeItem(SESSION_KEY);
+				setSession(null);
+				setSettingsOpen(false);
+				setAuthError("Your session expired. Sign in again.");
+			} else if (account) {
+				setAccountNotice({ ok: false, text: m.message });
+			} else {
+				setAuthError(m.message);
+			}
+		}
+	};
+
+	const setNotifs = (value: boolean) => {
+		setNotifsPref(value);
+		localStorage.setItem(NOTIFS_KEY, value ? "on" : "off");
+	};
+
+	if (!account || !token) {
 		return (
-			<div className="chat">
-				<div className="welcome">
-					<h2>Chat</h2>
-					<p>Pick a username to start chatting with your friends.</p>
-					<form
-						onSubmit={(e) => {
-							e.preventDefault();
-							const input = e.currentTarget.elements.namedItem(
-								"username",
-							) as HTMLInputElement;
-							const username = input.value.trim();
-							if (username) {
-								localStorage.setItem(USERNAME_KEY, username);
-								setName(username);
-							}
-						}}
-					>
-						<input
-							type="text"
-							name="username"
-							placeholder="Enter your username..."
-							autoComplete="off"
-							maxLength={24}
-						/>
-						<button type="submit">Join</button>
-					</form>
-				</div>
-			</div>
+			<AccountsGate onMessage={handleAccountMessage}>
+				{(send) => (
+					<Welcome
+						initialName={localStorage.getItem(OLD_USERNAME_KEY) ?? ""}
+						error={authError}
+						onAuth={(msg) => send(msg)}
+					/>
+				)}
+			</AccountsGate>
 		);
 	}
 
 	return (
 		<div className="app-layout">
 			<Sidebar
-				name={name}
+				name={account.name}
 				rooms={rooms}
 				activeRoom={room}
 				open={sidebarOpen}
@@ -732,15 +1083,18 @@ function App() {
 						navigate("/");
 					}
 				}}
-				onChangeName={() => {
-					localStorage.removeItem(USERNAME_KEY);
-					setName("");
+				onOpenSettings={() => {
+					setAccountNotice(null);
+					setSettingsOpen(true);
 				}}
 			/>
 			{room ? (
 				<ChatRoom
+					key={`${room}:${account.name}`}
 					room={room}
-					name={name}
+					account={account}
+					token={token}
+					notifsPref={notifsPref}
 					onOpenSidebar={() => setSidebarOpen(true)}
 				/>
 			) : (
@@ -755,6 +1109,31 @@ function App() {
 						Browse rooms
 					</button>
 				</div>
+			)}
+			{settingsOpen && (
+				<AccountsGate onMessage={handleAccountMessage}>
+					{(send) => (
+						<SettingsModal
+							account={account}
+							token={token}
+							notifsPref={notifsPref}
+							onToggleNotifs={setNotifs}
+							theme={theme}
+							onSetTheme={setTheme}
+							notice={accountNotice}
+							onClearNotice={() => setAccountNotice(null)}
+							onClose={() => setSettingsOpen(false)}
+							onSignOut={() => {
+								localStorage.removeItem(SESSION_KEY);
+								setSession(null);
+								setSettingsOpen(false);
+								setAuthError(null);
+								navigate("/");
+							}}
+							send={send}
+						/>
+					)}
+				</AccountsGate>
 			)}
 		</div>
 	);

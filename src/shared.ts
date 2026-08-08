@@ -8,6 +8,7 @@ export type ChatMessage = {
 	id: string;
 	content: string;
 	user: string;
+	userId?: string;
 	role: "user" | "assistant";
 	media?: string;
 	timestamp?: number;
@@ -20,6 +21,7 @@ export type Message =
 			id: string;
 			content: string;
 			user: string;
+			userId?: string;
 			role: "user" | "assistant";
 			media?: string;
 			timestamp?: number;
@@ -30,6 +32,7 @@ export type Message =
 			id: string;
 			content: string;
 			user: string;
+			userId?: string;
 			role: "user" | "assistant";
 			media?: string;
 			timestamp?: number;
@@ -50,6 +53,57 @@ export type Message =
 	| {
 			type: "typing-stop";
 			user: string;
+	  };
+
+export type AccountInfo = {
+	id: string;
+	name: string;
+};
+
+export type AccountMessage =
+	| {
+			type: "register";
+			name: string;
+			password: string;
+			remember: boolean;
+	  }
+	| {
+			type: "login";
+			name: string;
+			password: string;
+			remember: boolean;
+	  }
+	| {
+			type: "registered";
+			id: string;
+			name: string;
+			token: string;
+			remember: boolean;
+	  }
+	| {
+			type: "logged-in";
+			id: string;
+			name: string;
+			token: string;
+			remember: boolean;
+	  }
+	| {
+			type: "rename";
+			token: string;
+			newName: string;
+	  }
+	| {
+			type: "renamed";
+			name: string;
+	  }
+	| {
+			type: "logout";
+			token: string;
+	  }
+	| {
+			type: "error";
+			code: "name-taken" | "invalid" | "invalid-input" | "session";
+			message: string;
 	  };
 
 export type RoomsMessage =
