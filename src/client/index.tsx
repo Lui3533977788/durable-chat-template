@@ -46,6 +46,14 @@ function notify(title: string, body: string) {
 	}
 }
 
+function replyPreview(m: ChatMessage): string {
+	if (m.media) {
+		return m.media.startsWith("data:image/") ? "[Image]" : "[Video]";
+	}
+	const text = m.content.trim();
+	return text.length > 60 ? `${text.slice(0, 60)}…` : text;
+}
+
 function ChatRoom({
 	room,
 	name,
@@ -56,8 +64,13 @@ function ChatRoom({
 	onOpenSidebar: () => void;
 }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
+	const [replyTo, setReplyTo] = useState<ChatMessage | null>(null);
+	const [draft, setDraft] = useState("");
+	const [typingUsers, setTypingUsers] = useState<string[]>([]);
+	const [highlightId, setHighlightId] = useState<string | null>(null);
 	const messagesRef = useRef<HTMLDivElement>(null);
 	const nearBottomRef = useRef(true);
+	const lastTypingSentRef = useRef(0);
 
 	useEffect(() => {
 		// keep scrolled to the latest message unless the user scrolled up
@@ -74,7 +87,49 @@ function ChatRoom({
 			nearBottomRef.current = true;
 			el.scrollTop = el.scrollHeight;
 		}
+		// reset per-room state
+		setTypingUsers([]);
+		setReplyTo(null);
+		setDraft("");
 	}, [room]);
+
+	useEffect(() => {
+		// safety net: hide the indicator if no updates arrive
+		if (typingUsers.length === 0) return;
+		const t = setTimeout(() => setTypingUsers([]), 5000);
+		return () => clearTimeout(t);
+	}, [typingUsers]);
+
+	const sendTyping = (stop: boolean) => {
+		if (stop) {
+			lastTypingSentRef.current = 0;
+			socket.send(
+				JSON.stringify({
+					type: "typing-stop",
+					user: name,
+				} satisfies Message),
+			);
+			return;
+		}
+		// throttle: at most one typing ping every 2.5s
+		const now = Date.now();
+		if (now - lastTypingSentRef.current < 2500) return;
+		lastTypingSentRef.current = now;
+		socket.send(
+			JSON.stringify({
+				type: "typing-start",
+				user: name,
+			} satisfies Message),
+		);
+	};
+
+	const jumpTo = (id: string) => {
+		const el = document.querySelector<HTMLElement>(`[data-mid="${id}"]`);
+		if (!el) return;
+		el.scrollIntoView({ block: "center", behavior: "smooth" });
+		setHighlightId(id);
+		setTimeout(() => setHighlightId(null), 2000);
+	};
 
 	const sendMessage = (chatMessage: ChatMessage) => {
 		setMessages((messages) => [...messages, chatMessage]);
@@ -128,6 +183,10 @@ function ChatRoom({
 		room,
 		onMessage: (evt) => {
 			const message = JSON.parse(evt.data as string) as Message;
+			if (message.type === "typing") {
+				setTypingUsers(message.users.filter((u) => u !== name));
+				return;
+			}
 			if (message.type === "add") {
 				if (message.user !== name && document.hidden) {
 					notify(
@@ -150,6 +209,7 @@ function ChatRoom({
 							role: message.role,
 							media: message.media,
 							timestamp: message.timestamp,
+							replyTo: message.replyTo,
 						},
 					]);
 				} else {
@@ -163,6 +223,7 @@ function ChatRoom({
 								role: message.role,
 								media: message.media,
 								timestamp: message.timestamp,
+								replyTo: message.replyTo,
 							})
 							.concat(messages.slice(foundIndex + 1));
 					});
@@ -178,11 +239,12 @@ function ChatRoom({
 									role: message.role,
 									media: message.media,
 									timestamp: message.timestamp,
+									replyTo: message.replyTo,
 								}
 							: m,
 					),
 				);
-			} else {
+			} else if (message.type === "all") {
 				setMessages(message.messages);
 			}
 		},
@@ -215,7 +277,10 @@ function ChatRoom({
 				{messages.map((message) => (
 					<div
 						key={message.id}
-						className={`message ${message.user === name ? "self" : ""}`}
+						data-mid={message.id}
+						className={`message ${message.user === name ? "self" : ""} ${
+							message.id === highlightId ? "highlighted" : ""
+						}`}
 					>
 						<div className="user">
 							{message.user}
@@ -224,8 +289,33 @@ function ChatRoom({
 									{formatTime(message.timestamp)}
 								</span>
 							)}
+							<button
+								type="button"
+								className="reply-button"
+								title="Reply"
+								onClick={() => {
+									setReplyTo(message);
+									setDraft("");
+								}}
+							>
+								↩
+							</button>
 						</div>
 						<div className="bubble">
+							{message.replyTo && (
+								<button
+									type="button"
+									className="reply-quote"
+									onClick={() => jumpTo(message.replyTo!.id)}
+								>
+									<span className="reply-quote-user">
+										↩ {message.replyTo.user}
+									</span>
+									<span className="reply-quote-content">
+										{message.replyTo.content}
+									</span>
+								</button>
+							)}
 							{message.media ? (
 								message.media.startsWith("data:image/") ? (
 									<img
@@ -263,22 +353,59 @@ function ChatRoom({
 					</button>
 				</div>
 			)}
+			<div className="typing-bar">
+				{typingUsers.length > 0 && (
+					<span>
+						<span className="typing-dots">
+							<span />
+							<span />
+							<span />
+						</span>
+						{typingUsers.length === 1
+							? `${typingUsers[0]} is typing…`
+							: `${typingUsers
+									.slice(0, 2)
+									.join(", ")}${typingUsers.length > 2 ? " and others" : ""} are typing…`}
+					</span>
+				)}
+			</div>
+			{replyTo && (
+				<div className="reply-bar">
+					<span className="reply-bar-label">
+						Replying to <b>{replyTo.user}</b>: {replyPreview(replyTo)}
+					</span>
+					<button
+						type="button"
+						className="reply-bar-close"
+						onClick={() => setReplyTo(null)}
+						aria-label="Cancel reply"
+					>
+						×
+					</button>
+				</div>
+			)}
 			<form
 				className="chat-input"
 				onSubmit={(e) => {
 					e.preventDefault();
-					const content = e.currentTarget.elements.namedItem(
-						"content",
-					) as HTMLInputElement;
-					if (!content.value.trim()) return;
+					if (!draft.trim()) return;
 					sendMessage({
 						id: nanoid(8),
-						content: content.value,
+						content: draft,
 						user: name,
 						role: "user",
 						timestamp: Date.now(),
+						replyTo: replyTo
+							? {
+									id: replyTo.id,
+									user: replyTo.user,
+									content: replyPreview(replyTo),
+								}
+							: undefined,
 					});
-					content.value = "";
+					setDraft("");
+					setReplyTo(null);
+					sendTyping(true);
 				}}
 			>
 				<label className="media-button" title="Attach image or video">
@@ -297,6 +424,15 @@ function ChatRoom({
 				<input
 					type="text"
 					name="content"
+					value={draft}
+					onChange={(e) => {
+						setDraft(e.target.value);
+						if (e.target.value.trim()) {
+							sendTyping(false);
+						} else {
+							sendTyping(true);
+						}
+					}}
 					placeholder={`Message ${name}...`}
 					autoComplete="off"
 				/>

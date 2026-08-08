@@ -9,6 +9,7 @@ import {
 	normalizeRoomName,
 	type ChatMessage,
 	type Message,
+	type ReplyTo,
 	type RoomsMessage,
 } from "../shared";
 
@@ -16,9 +17,20 @@ export class Chat extends Server<Env> {
 	static options = { hibernate: true };
 
 	messages = [] as ChatMessage[];
+	typingUsers = new Map<string, string>();
 
 	broadcastMessage(message: Message, exclude?: string[]) {
 		this.broadcast(JSON.stringify(message), exclude);
+	}
+
+	broadcastTyping(exclude?: string[]) {
+		this.broadcast(
+			JSON.stringify({
+				type: "typing",
+				users: [...this.typingUsers.values()],
+			} satisfies Message),
+			exclude,
+		);
 	}
 
 	onStart() {
@@ -27,7 +39,7 @@ export class Chat extends Server<Env> {
 
 		// create the messages table if it doesn't exist
 		this.ctx.storage.sql.exec(
-			`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user TEXT, role TEXT, content TEXT, media TEXT, timestamp INTEGER)`,
+			`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, user TEXT, role TEXT, content TEXT, media TEXT, timestamp INTEGER, replyTo TEXT)`,
 		);
 
 		// add the media column to existing tables (no-op once it exists)
@@ -46,10 +58,31 @@ export class Chat extends Server<Env> {
 			// column already exists
 		}
 
+		// add the replyTo column to existing tables (no-op once it exists)
+		try {
+			this.ctx.storage.sql.exec(
+				`ALTER TABLE messages ADD COLUMN replyTo TEXT`,
+			);
+		} catch (e) {
+			// column already exists
+		}
+
 		// load the messages from the database
-		this.messages = this.ctx.storage.sql
-			.exec(`SELECT * FROM messages`)
-			.toArray() as ChatMessage[];
+		this.messages = (
+			this.ctx.storage.sql
+				.exec(`SELECT * FROM messages`)
+				.toArray() as Array<Record<string, unknown>>
+		).map((row) => ({
+			id: row.id as string,
+			user: row.user as string,
+			role: row.role as "user" | "assistant",
+			content: row.content as string,
+			media: (row.media as string) ?? undefined,
+			timestamp: (row.timestamp as number) ?? undefined,
+			replyTo: row.replyTo
+				? (JSON.parse(row.replyTo as string) as ReplyTo)
+				: undefined,
+		}));
 	}
 
 	onConnect(connection: Connection) {
@@ -77,17 +110,19 @@ export class Chat extends Server<Env> {
 
 		// Use parameterized queries to prevent SQL injection
 		this.ctx.storage.sql.exec(
-			`INSERT INTO messages (id, user, role, content, media, timestamp) VALUES (?, ?, ?, ?, ?, ?)
-			 ON CONFLICT (id) DO UPDATE SET content = ?, media = ?, timestamp = ?`,
+			`INSERT INTO messages (id, user, role, content, media, timestamp, replyTo) VALUES (?, ?, ?, ?, ?, ?, ?)
+			 ON CONFLICT (id) DO UPDATE SET content = ?, media = ?, timestamp = ?, replyTo = ?`,
 			message.id,
 			message.user,
 			message.role,
 			message.content,
 			message.media ?? null,
 			message.timestamp ?? null,
+			message.replyTo ? JSON.stringify(message.replyTo) : null,
 			message.content,
 			message.media ?? null,
 			message.timestamp ?? null,
+			message.replyTo ? JSON.stringify(message.replyTo) : null,
 		);
 	}
 
@@ -109,6 +144,17 @@ export class Chat extends Server<Env> {
 	onMessage(connection: Connection, message: WSMessage) {
 		const parsed = JSON.parse(message as string) as Message;
 
+		if (parsed.type === "typing-start") {
+			this.typingUsers.set(connection.id, parsed.user);
+			this.broadcastTyping([connection.id]);
+			return;
+		}
+		if (parsed.type === "typing-stop") {
+			this.typingUsers.delete(connection.id);
+			this.broadcastTyping([connection.id]);
+			return;
+		}
+
 		// stamp the server time on the message (authoritative)
 		if (parsed.type === "add" || parsed.type === "update") {
 			parsed.timestamp = Date.now();
@@ -120,6 +166,12 @@ export class Chat extends Server<Env> {
 		// let's update our local messages store
 		if (parsed.type === "add" || parsed.type === "update") {
 			this.saveMessage(parsed);
+		}
+	}
+
+	onClose(connection: Connection) {
+		if (this.typingUsers.delete(connection.id)) {
+			this.broadcastTyping([connection.id]);
 		}
 	}
 }

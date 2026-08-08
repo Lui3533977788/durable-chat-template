@@ -1,3 +1,9 @@
+export type ReplyTo = {
+	id: string;
+	user: string;
+	content: string;
+};
+
 export type ChatMessage = {
 	id: string;
 	content: string;
@@ -5,6 +11,7 @@ export type ChatMessage = {
 	role: "user" | "assistant";
 	media?: string;
 	timestamp?: number;
+	replyTo?: ReplyTo;
 };
 
 export type Message =
@@ -16,6 +23,7 @@ export type Message =
 			role: "user" | "assistant";
 			media?: string;
 			timestamp?: number;
+			replyTo?: ReplyTo;
 	  }
 	| {
 			type: "update";
@@ -25,10 +33,23 @@ export type Message =
 			role: "user" | "assistant";
 			media?: string;
 			timestamp?: number;
+			replyTo?: ReplyTo;
 	  }
 	| {
 			type: "all";
 			messages: ChatMessage[];
+	  }
+	| {
+			type: "typing";
+			users: string[];
+	  }
+	| {
+			type: "typing-start";
+			user: string;
+	  }
+	| {
+			type: "typing-stop";
+			user: string;
 	  };
 
 export type RoomsMessage =

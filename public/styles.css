@@ -360,6 +360,7 @@ html {
 .message {
 	display: flex;
 	flex-direction: column;
+	align-items: flex-start;
 	max-width: 75%;
 	animation: fadeIn 0.2s ease;
 }
@@ -377,6 +378,21 @@ html {
 
 .message.self {
 	align-self: flex-end;
+	align-items: flex-end;
+}
+
+.message.highlighted .bubble {
+	outline: 2px solid #4a9eff;
+	animation: flashHighlight 2s ease;
+}
+
+@keyframes flashHighlight {
+	0% {
+		outline-color: #4a9eff;
+	}
+	100% {
+		outline-color: transparent;
+	}
 }
 
 .message .user {
@@ -400,6 +416,27 @@ html {
 	font-weight: 400;
 }
 
+.reply-button {
+	display: none;
+	background: none;
+	border: none;
+	color: #555;
+	cursor: pointer;
+	font-size: 12px;
+	line-height: 1;
+	padding: 0;
+	font-family: inherit;
+}
+
+.message:hover .reply-button,
+.reply-button:focus-visible {
+	display: inline;
+}
+
+.reply-button:hover {
+	color: #4a9eff;
+}
+
 .bubble {
 	background: #2a2a4a;
 	color: #e0e0e0;
@@ -409,6 +446,9 @@ html {
 	line-height: 1.45;
 	word-wrap: break-word;
 	font-size: 14px;
+	width: fit-content;
+	max-width: 100%;
+	min-width: 24px;
 }
 
 .message.self .bubble {
@@ -417,12 +457,135 @@ html {
 	border-top-left-radius: 14px;
 }
 
+.reply-quote {
+	display: flex;
+	flex-direction: column;
+	align-items: flex-start;
+	gap: 2px;
+	background: rgba(255, 255, 255, 0.06);
+	border: none;
+	border-left: 3px solid #4a9eff;
+	border-radius: 6px;
+	margin-bottom: 6px;
+	padding: 6px 10px;
+	cursor: pointer;
+	font-family: inherit;
+	font-size: 12px;
+	text-align: left;
+	max-width: 100%;
+}
+
+.message.self .reply-quote {
+	background: rgba(0, 0, 0, 0.2);
+}
+
+.reply-quote:hover {
+	background: rgba(255, 255, 255, 0.1);
+}
+
+.reply-quote-user {
+	color: #4a9eff;
+	font-weight: 600;
+}
+
+.reply-quote-content {
+	color: #aaa;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+	max-width: 100%;
+}
+
 .message-media {
 	display: block;
 	max-width: min(340px, 60vw);
 	max-height: 340px;
 	border-radius: 10px;
 	margin-bottom: 4px;
+}
+
+.typing-bar {
+	min-height: 20px;
+	padding: 0 20px;
+	background: #16213e;
+	font-size: 12px;
+	color: #888;
+	display: flex;
+	align-items: center;
+}
+
+.typing-dots {
+	display: inline-flex;
+	gap: 3px;
+	margin-right: 8px;
+	align-items: center;
+}
+
+.typing-dots span {
+	width: 5px;
+	height: 5px;
+	border-radius: 50%;
+	background: #888;
+	animation: typingBounce 1.2s infinite ease-in-out;
+}
+
+.typing-dots span:nth-child(2) {
+	animation-delay: 0.15s;
+}
+
+.typing-dots span:nth-child(3) {
+	animation-delay: 0.3s;
+}
+
+@keyframes typingBounce {
+	0%,
+	60%,
+	100% {
+		transform: translateY(0);
+		opacity: 0.5;
+	}
+	30% {
+		transform: translateY(-4px);
+		opacity: 1;
+	}
+}
+
+.reply-bar {
+	display: flex;
+	align-items: center;
+	gap: 10px;
+	padding: 6px 20px;
+	background: #16213e;
+	border-top: 1px solid #2a2a4a;
+}
+
+.reply-bar-label {
+	flex: 1;
+	min-width: 0;
+	font-size: 12px;
+	color: #aaa;
+	overflow: hidden;
+	text-overflow: ellipsis;
+	white-space: nowrap;
+}
+
+.reply-bar-label b {
+	color: #4a9eff;
+}
+
+.reply-bar-close {
+	background: none;
+	border: none;
+	color: #999;
+	font-size: 18px;
+	line-height: 1;
+	cursor: pointer;
+	padding: 0 4px;
+	font-family: inherit;
+}
+
+.reply-bar-close:hover {
+	color: #fff;
 }
 
 .message-media:last-child {
@@ -693,6 +856,10 @@ html {
 		display: flex;
 	}
 
+	.reply-button {
+		display: inline;
+	}
+
 	.room-actions button {
 		font-size: 12px;
 		padding: 6px 8px;
@@ -724,6 +891,14 @@ html {
 	.chat-input {
 		padding: 8px 10px;
 		gap: 6px;
+	}
+
+	.typing-bar {
+		padding: 0 12px;
+	}
+
+	.reply-bar {
+		padding: 6px 12px;
 	}
 
 	.chat-input button {
