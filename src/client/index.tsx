@@ -397,7 +397,7 @@ function ChatRoom({
 							} ${message.id === highlightId ? "highlighted" : ""}`}
 						>
 							<div className="user">
-								{message.user}
+								{showTime && <span>{message.user}</span>}
 								{showTime && (
 									<span className="time">
 										{formatTime(message.timestamp!)}
