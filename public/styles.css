@@ -458,6 +458,27 @@ html {
 	color: var(--accent-2);
 }
 
+.uploads-button {
+	display: none;
+	background: none;
+	border: none;
+	color: var(--faint);
+	cursor: pointer;
+	font-size: 12px;
+	line-height: 1;
+	padding: 0;
+	font-family: inherit;
+}
+
+.message:hover .uploads-button,
+.uploads-button:focus-visible {
+	display: inline;
+}
+
+.uploads-button:hover {
+	color: var(--danger);
+}
+
 .bubble {
 	background: var(--bg-3);
 	color: var(--text);
@@ -706,6 +727,34 @@ html {
 .media-button:hover {
 	background: var(--bg-3);
 	color: var(--text);
+}
+
+.media-button.disabled {
+	cursor: not-allowed;
+	opacity: 0.45;
+}
+
+.media-button.disabled:hover {
+	background: none;
+	color: var(--muted-2);
+}
+
+.chat-toast {
+	position: absolute;
+	left: 50%;
+	bottom: 88px;
+	transform: translateX(-50%);
+	background: var(--bg-2);
+	color: var(--text);
+	border: 1px solid var(--border);
+	border-radius: 10px;
+	padding: 8px 14px;
+	font-size: 13px;
+	max-width: 90%;
+	text-align: center;
+	z-index: 20;
+	box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+	pointer-events: none;
 }
 
 .chat-input {
@@ -987,6 +1036,71 @@ html {
 	overflow: hidden;
 	text-overflow: ellipsis;
 	white-space: nowrap;
+}
+
+.account-id {
+	font-size: 12px;
+	font-family: ui-monospace, "Cascadia Mono", Consolas, monospace;
+	color: var(--muted);
+	user-select: all;
+	word-break: break-all;
+	white-space: normal;
+}
+
+.settings-copy {
+	background: var(--bg-3);
+	border: 1px solid var(--border);
+	color: var(--text);
+	border-radius: 8px;
+	padding: 6px 12px;
+	cursor: pointer;
+	font-size: 13px;
+	font-family: inherit;
+	transition: background 0.15s, border-color 0.15s;
+}
+
+.settings-copy:hover {
+	background: var(--bg-4);
+	border-color: var(--accent);
+}
+
+.restricted-list {
+	list-style: none;
+	margin: 4px 0 0;
+	padding: 0;
+	display: flex;
+	flex-direction: column;
+	gap: 6px;
+}
+
+.restricted-item {
+	display: flex;
+	align-items: center;
+	justify-content: space-between;
+	gap: 10px;
+	background: var(--bg-3);
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	padding: 8px 12px;
+	font-size: 14px;
+	color: var(--text);
+}
+
+.restricted-item button {
+	background: var(--bg-4);
+	border: 1px solid var(--border);
+	color: var(--text);
+	border-radius: 8px;
+	padding: 5px 10px;
+	cursor: pointer;
+	font-size: 12px;
+	font-family: inherit;
+	transition: background 0.15s, border-color 0.15s;
+}
+
+.restricted-item button:hover {
+	border-color: var(--accent);
+	background: var(--bg-2);
 }
 
 .settings-rename {

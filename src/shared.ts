@@ -53,11 +53,28 @@ export type Message =
 	| {
 			type: "typing-stop";
 			user: string;
+	  }
+	| {
+			type: "uploads-rule";
+			token: string;
+			targetId: string;
+			disabled: boolean;
+	  }
+	| {
+			type: "uploads-rule-result";
+			ok: boolean;
+			message: string;
+			targetId: string;
+	  }
+	| {
+			type: "uploads-disabled";
 	  };
 
 export type AccountInfo = {
 	id: string;
 	name: string;
+	isOwner: boolean;
+	uploadsDisabled: boolean;
 };
 
 export type AccountMessage =
@@ -79,6 +96,9 @@ export type AccountMessage =
 			name: string;
 			token: string;
 			remember: boolean;
+			isOwner: boolean;
+			uploadsDisabled: boolean;
+			ownerConfigured: boolean;
 	  }
 	| {
 			type: "logged-in";
@@ -86,6 +106,9 @@ export type AccountMessage =
 			name: string;
 			token: string;
 			remember: boolean;
+			isOwner: boolean;
+			uploadsDisabled: boolean;
+			ownerConfigured: boolean;
 	  }
 	| {
 			type: "rename";
@@ -101,8 +124,28 @@ export type AccountMessage =
 			token: string;
 	  }
 	| {
+			type: "uploads-rule";
+			token: string;
+			targetId: string;
+			disabled: boolean;
+	  }
+	| {
+			type: "uploads-rule-done";
+			ok: boolean;
+			message: string;
+			targetId: string;
+	  }
+	| {
+			type: "uploads-restricted-list";
+			token: string;
+	  }
+	| {
+			type: "uploads-restricted";
+			accounts: AccountInfo[];
+	  }
+	| {
 			type: "error";
-			code: "name-taken" | "invalid" | "invalid-input" | "session";
+			code: "name-taken" | "invalid" | "invalid-input" | "session" | "forbidden";
 			message: string;
 	  };
 

@@ -40,6 +40,9 @@
 			}
 		]
 	},
+	"secrets": {
+		"required": ["OWNER_ACCOUNT_IDS"]
+	},
 	"observability": {
 		"enabled": true
 	},

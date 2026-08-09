@@ -177,9 +177,47 @@ export class Chat extends Server<Env> {
 		return super.onRequest(request);
 	}
 
-	onMessage(connection: Connection, message: WSMessage) {
+	async onMessage(connection: Connection, message: WSMessage) {
 		const parsed = JSON.parse(message as string) as Message;
 		const identity = connection.state as AccountInfo | null;
+
+		if (parsed.type === "uploads-rule") {
+			// owner-only action; forward to the Accounts DO which checks the session
+			const res = await this.env.Accounts.get(
+				this.env.Accounts.idFromName("registry"),
+			).fetch("https://accounts/uploads-rule", {
+				method: "POST",
+				headers: { "x-partykit-room": "registry" },
+				body: JSON.stringify({
+					token: parsed.token,
+					targetId: parsed.targetId,
+					disabled: parsed.disabled,
+				}),
+			});
+			let result: { ok: boolean; message: string; targetId: string };
+			try {
+				result = (await res.json()) as {
+					ok: boolean;
+					message: string;
+					targetId: string;
+				};
+			} catch (e) {
+				result = {
+					ok: false,
+					message: "Couldn't reach the accounts server.",
+					targetId: parsed.targetId,
+				};
+			}
+			connection.send(
+				JSON.stringify({
+					type: "uploads-rule-result",
+					ok: result.ok,
+					message: result.message,
+					targetId: result.targetId,
+				} satisfies Message),
+			);
+			return;
+		}
 
 		if (parsed.type === "typing-start" || parsed.type === "typing-stop") {
 			if (!identity) return;
@@ -194,6 +232,37 @@ export class Chat extends Server<Env> {
 
 		if (parsed.type === "add" || parsed.type === "update") {
 			if (!identity) return;
+			if (parsed.media) {
+				// file uploads can be disabled per account; check with the
+				// accounts server on every media message so it applies live
+				try {
+					const check = await this.env.Accounts.get(
+						this.env.Accounts.idFromName("registry"),
+					).fetch("https://accounts/uploads-check", {
+						method: "POST",
+						headers: { "x-partykit-room": "registry" },
+						body: identity.id,
+					});
+					const status = (await check.json()) as { disabled: boolean };
+					if (status.disabled) {
+						connection.send(
+							JSON.stringify({
+								type: "uploads-disabled",
+							} satisfies Message),
+						);
+						return;
+					}
+				} catch (e) {
+					// if the accounts server is unreachable, reject the upload
+					// rather than letting it through
+					connection.send(
+						JSON.stringify({
+							type: "uploads-disabled",
+						} satisfies Message),
+					);
+					return;
+				}
+			}
 			// the account name is authoritative - ignore whatever the client sent
 			parsed.user = identity.name;
 			parsed.userId = identity.id;
@@ -225,6 +294,100 @@ export class Accounts extends Server<Env> {
 		this.ctx.storage.sql.exec(
 			`CREATE TABLE IF NOT EXISTS sessions (token TEXT PRIMARY KEY, account TEXT NOT NULL, created INTEGER NOT NULL)`,
 		);
+		this.ctx.storage.sql.exec(
+			`CREATE TABLE IF NOT EXISTS uploads_disabled (account_id TEXT PRIMARY KEY, created INTEGER NOT NULL)`,
+		);
+	}
+
+	// accounts listed in the OWNER_ACCOUNT_IDS secret are the site owners.
+	// the value only ever lives in the secret (or .dev.vars locally), never in
+	// the repo, so nobody but the deployer can become an owner.
+	private ownerIds(): string[] {
+		const raw = (this.env.OWNER_ACCOUNT_IDS ?? "").trim();
+		if (!raw) return [];
+		return raw
+			.split(",")
+			.map((id) => id.trim())
+			.filter(Boolean);
+	}
+
+	private isOwnerConfigured(): boolean {
+		return this.ownerIds().length > 0;
+	}
+
+	private isOwnerAccount(accountId: string): boolean {
+		return this.ownerIds().includes(accountId);
+	}
+
+	private isUploadsDisabled(accountId: string): boolean {
+		const rows = this.ctx.storage.sql
+			.exec(
+				`SELECT 1 FROM uploads_disabled WHERE account_id = ?`,
+				accountId,
+			)
+			.toArray();
+		return rows.length > 0;
+	}
+
+	private async accountInfo(accountId: string): Promise<AccountInfo | null> {
+		const rows = this.ctx.storage.sql
+			.exec(`SELECT id, name FROM accounts WHERE id = ?`, accountId)
+			.toArray() as Array<{ id: string; name: string }>;
+		const row = rows[0];
+		if (!row) return null;
+		return {
+			id: row.id,
+			name: row.name,
+			isOwner: this.isOwnerAccount(row.id),
+			uploadsDisabled: this.isUploadsDisabled(row.id),
+		};
+	}
+
+	// the one place that applies an uploads rule, shared by the chat socket
+	// (forwarded) and the accounts socket (settings)
+	private async applyUploadsRule(
+		requesterToken: string,
+		targetId: string,
+		disabled: boolean,
+	): Promise<{ ok: boolean; message: string; targetId: string }> {
+		const requesterId = this.findAccountForToken(requesterToken);
+		if (!requesterId) {
+			return {
+				ok: false,
+				message: "Your session expired. Sign out and sign in again.",
+				targetId,
+			};
+		}
+		if (!this.isOwnerAccount(requesterId)) {
+			return {
+				ok: false,
+				message: "Only the site owner can change upload permissions.",
+				targetId,
+			};
+		}
+		const target = await this.accountInfo(targetId);
+		if (!target) {
+			return { ok: false, message: "That account doesn't exist.", targetId };
+		}
+		if (disabled) {
+			this.ctx.storage.sql.exec(
+				`INSERT OR IGNORE INTO uploads_disabled (account_id, created) VALUES (?, ?)`,
+				targetId,
+				Date.now(),
+			);
+		} else {
+			this.ctx.storage.sql.exec(
+				`DELETE FROM uploads_disabled WHERE account_id = ?`,
+				targetId,
+			);
+		}
+		return {
+			ok: true,
+			message: disabled
+				? `"${target.name}" can no longer send images or videos.`
+				: `"${target.name}" can send images and videos again.`,
+			targetId,
+		};
 	}
 
 	private async deriveHash(password: string, salt: string): Promise<string> {
@@ -268,6 +431,16 @@ export class Accounts extends Server<Env> {
 		const parsed = JSON.parse(message as string) as AccountMessage;
 
 		if (parsed.type === "register" || parsed.type === "login") {
+			if (typeof parsed.name !== "string") {
+				connection.send(
+					JSON.stringify({
+						type: "error",
+						code: "invalid-input",
+						message: "Invalid name or password.",
+					} satisfies AccountMessage),
+				);
+				return;
+			}
 			const name = parsed.name.trim().slice(0, 24);
 			const isRegister = parsed.type === "register";
 			if (
@@ -331,17 +504,20 @@ export class Accounts extends Server<Env> {
 					id,
 					Date.now(),
 				);
-				connection.send(
-					JSON.stringify({
-						type: "registered",
-						id,
-						name,
-						token,
-						remember: parsed.remember,
-					} satisfies AccountMessage),
-				);
-				return;
-			}
+			connection.send(
+				JSON.stringify({
+					type: "registered",
+					id,
+					name,
+					token,
+					remember: parsed.remember,
+					isOwner: this.isOwnerAccount(id),
+					uploadsDisabled: false,
+					ownerConfigured: this.isOwnerConfigured(),
+				} satisfies AccountMessage),
+			);
+			return;
+		}
 
 			const rows = this.ctx.storage.sql
 				.exec(
@@ -375,6 +551,9 @@ export class Accounts extends Server<Env> {
 					name,
 					token,
 					remember: parsed.remember,
+					isOwner: this.isOwnerAccount(row.id),
+					uploadsDisabled: this.isUploadsDisabled(row.id),
+					ownerConfigured: this.isOwnerConfigured(),
 				} satisfies AccountMessage),
 			);
 			return;
@@ -440,6 +619,46 @@ export class Accounts extends Server<Env> {
 				`DELETE FROM sessions WHERE token = ?`,
 				parsed.token,
 			);
+			return;
+		}
+
+		if (parsed.type === "uploads-rule") {
+			const result = await this.applyUploadsRule(
+				parsed.token,
+				parsed.targetId,
+				parsed.disabled,
+			);
+			connection.send(
+				JSON.stringify({
+					type: "uploads-rule-done",
+					ok: result.ok,
+					message: result.message,
+					targetId: result.targetId,
+				} satisfies AccountMessage),
+			);
+			return;
+		}
+
+		if (parsed.type === "uploads-restricted-list") {
+			const accountId = this.findAccountForToken(parsed.token);
+			if (!accountId || !this.isOwnerAccount(accountId)) return;
+			const rows = this.ctx.storage.sql
+				.exec(
+					`SELECT a.id, a.name FROM uploads_disabled u JOIN accounts a ON a.id = u.account_id ORDER BY a.name`,
+				)
+				.toArray() as Array<{ id: string; name: string }>;
+			connection.send(
+				JSON.stringify({
+					type: "uploads-restricted",
+					accounts: rows.map((r) => ({
+						id: r.id,
+						name: r.name,
+						isOwner: false,
+						uploadsDisabled: true,
+					})),
+				} satisfies AccountMessage),
+			);
+			return;
 		}
 	}
 
@@ -451,13 +670,53 @@ export class Accounts extends Server<Env> {
 			const token = (await request.text()).trim();
 			const accountId = token ? this.findAccountForToken(token) : null;
 			if (!accountId) return new Response("invalid session", { status: 401 });
-			const rows = this.ctx.storage.sql
-				.exec(`SELECT id, name FROM accounts WHERE id = ?`, accountId)
-				.toArray() as Array<{ id: string; name: string }>;
-			const row = rows[0];
-			if (!row) return new Response("invalid session", { status: 401 });
-			return Response.json({ id: row.id, name: row.name } satisfies AccountInfo);
+			const info = await this.accountInfo(accountId);
+			if (!info) return new Response("invalid session", { status: 401 });
+			return Response.json(info satisfies AccountInfo);
 		}
+
+		if (
+			request.method === "POST" &&
+			new URL(request.url).pathname.endsWith("/uploads-rule")
+		) {
+			let body: { token?: string; targetId?: string; disabled?: boolean };
+			try {
+				body = (await request.json()) as {
+					token?: string;
+					targetId?: string;
+					disabled?: boolean;
+				};
+			} catch (e) {
+				return Response.json(
+					{ ok: false, message: "Invalid request." },
+					{ status: 400 },
+				);
+			}
+			if (!body.token || !body.targetId || typeof body.disabled !== "boolean") {
+				return Response.json(
+					{ ok: false, message: "Invalid request." },
+					{ status: 400 },
+				);
+			}
+			return Response.json(
+				await this.applyUploadsRule(body.token, body.targetId, body.disabled),
+			);
+		}
+
+		if (
+			request.method === "POST" &&
+			new URL(request.url).pathname.endsWith("/uploads-check")
+		) {
+			const accountId = (await request.text()).trim();
+			const rows = this.ctx.storage.sql
+				.exec(`SELECT id FROM accounts WHERE id = ?`, accountId)
+				.toArray();
+			if (rows.length === 0) {
+				return Response.json({ disabled: true }, { status: 200 });
+			}
+			return Response.json({ disabled: this.isUploadsDisabled(accountId) });
+		}
+
 		return super.onRequest(request);
 	}
 }

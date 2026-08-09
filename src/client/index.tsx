@@ -26,14 +26,29 @@ const THEME_KEY = "durable-chat-theme";
 const NOTIFS_KEY = "durable-chat-notifs";
 const OLD_USERNAME_KEY = "durable-chat-username";
 
-type Session = { id: string; name: string; token: string };
+type Session = {
+	id: string;
+	name: string;
+	token: string;
+	isOwner: boolean;
+	uploadsDisabled: boolean;
+	ownerConfigured: boolean;
+};
 
 function loadSession(): Session | null {
 	try {
 		const raw = localStorage.getItem(SESSION_KEY);
 		if (!raw) return null;
-		const parsed = JSON.parse(raw) as Session;
-		return parsed && parsed.token ? parsed : null;
+		const parsed = JSON.parse(raw) as Partial<Session>;
+		if (!parsed.token) return null;
+		return {
+			id: parsed.id ?? "",
+			name: parsed.name ?? "",
+			token: parsed.token,
+			isOwner: parsed.isOwner ?? false,
+			uploadsDisabled: parsed.uploadsDisabled ?? false,
+			ownerConfigured: parsed.ownerConfigured ?? false,
+		};
 	} catch (e) {
 		return null;
 	}
@@ -84,12 +99,24 @@ function ChatRoom({
 	account,
 	token,
 	notifsPref,
+	isOwner,
+	uploadsDisabled,
+	restrictedUsers,
+	onRuleResult,
 	onOpenSidebar,
 }: {
 	room: string;
 	account: AccountInfo;
 	token: string;
 	notifsPref: boolean;
+	isOwner: boolean;
+	uploadsDisabled: boolean;
+	restrictedUsers: { id: string; name: string }[];
+	onRuleResult: (
+		ok: boolean,
+		message: string,
+		targetId: string,
+	) => void;
 	onOpenSidebar: () => void;
 }) {
 	const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -97,9 +124,16 @@ function ChatRoom({
 	const [draft, setDraft] = useState("");
 	const [typingUsers, setTypingUsers] = useState<string[]>([]);
 	const [highlightId, setHighlightId] = useState<string | null>(null);
+	const [toast, setToast] = useState<string | null>(null);
 	const messagesRef = useRef<HTMLDivElement>(null);
 	const nearBottomRef = useRef(true);
 	const lastTypingSentRef = useRef(0);
+
+	useEffect(() => {
+		if (!toast) return;
+		const t = setTimeout(() => setToast(null), 3000);
+		return () => clearTimeout(t);
+	}, [toast]);
 
 	useEffect(() => {
 		// keep scrolled to the latest message unless the user scrolled up
@@ -170,6 +204,19 @@ function ChatRoom({
 		);
 	};
 
+	const toggleUploads = (message: ChatMessage) => {
+		if (!message.userId) return;
+		const disabled = !restrictedUsers.some((r) => r.id === message.userId);
+		socket.send(
+			JSON.stringify({
+				type: "uploads-rule",
+				token,
+				targetId: message.userId,
+				disabled,
+			} satisfies Message),
+		);
+	};
+
 	const handleFile = (file: File) => {
 		const isImage = file.type.startsWith("image/");
 		const isVideo = file.type.startsWith("video/");
@@ -216,6 +263,21 @@ function ChatRoom({
 			const message = JSON.parse(evt.data as string) as Message;
 			if (message.type === "typing") {
 				setTypingUsers(message.users.filter((u) => u !== account.name));
+				return;
+			}
+			if (message.type === "uploads-rule-result") {
+				setToast(
+					message.ok
+						? message.message
+						: `Couldn't change upload permission: ${message.message}`,
+				);
+				onRuleResult(message.ok, message.message, message.targetId);
+				return;
+			}
+			if (message.type === "uploads-disabled") {
+				setToast(
+					"Uploads are disabled for your account. You can still send text messages.",
+				);
 				return;
 			}
 			if (message.type === "add") {
@@ -338,6 +400,22 @@ function ChatRoom({
 							>
 								↩
 							</button>
+							{isOwner && message.userId && !isSelf(message, account) && (
+								<button
+									type="button"
+									className="uploads-button"
+									title={
+										restrictedUsers.some(
+											(r) => r.id === message.userId,
+										)
+											? "Allow uploads"
+											: "Block uploads"
+									}
+									onClick={() => toggleUploads(message)}
+								>
+									🚫
+								</button>
+							)}
 						</div>
 						<div className="bubble">
 							{message.replyTo && (
@@ -391,6 +469,7 @@ function ChatRoom({
 					</button>
 				</div>
 			)}
+			{toast && <div className="chat-toast">{toast}</div>}
 			<div className="composer">
 				{typingUsers.length > 0 && (
 					<div className="typing-row">
@@ -446,22 +525,37 @@ function ChatRoom({
 						sendTyping(true);
 					}}
 				>
-					<label
-						className="media-button"
-						title="Attach image or video"
-						aria-label="Attach image or video"
-					>
-						<input
-							type="file"
-							accept="image/*,video/*"
-							onChange={(e) => {
-								const file = e.currentTarget.files?.[0];
-								if (file) handleFile(file);
-								e.currentTarget.value = "";
-							}}
-							hidden
-						/>
-					</label>
+					{uploadsDisabled ? (
+						<span
+							className="media-button disabled"
+							title="Uploads are disabled for your account"
+							aria-label="Uploads are disabled"
+						>
+							<input
+								type="file"
+								accept="image/*,video/*"
+								disabled
+								hidden
+							/>
+						</span>
+					) : (
+						<label
+							className="media-button"
+							title="Attach image or video"
+							aria-label="Attach image or video"
+						>
+							<input
+								type="file"
+								accept="image/*,video/*"
+								onChange={(e) => {
+									const file = e.currentTarget.files?.[0];
+									if (file) handleFile(file);
+									e.currentTarget.value = "";
+								}}
+								hidden
+							/>
+						</label>
+					)}
 					<input
 						type="text"
 						name="content"
@@ -773,6 +867,10 @@ function SettingsModal({
 	onClearNotice,
 	onClose,
 	onSignOut,
+	isOwner,
+	ownerConfigured,
+	restrictedUsers,
+	onToggleUploads,
 	send,
 }: {
 	account: AccountInfo;
@@ -785,16 +883,38 @@ function SettingsModal({
 	onClearNotice: () => void;
 	onClose: () => void;
 	onSignOut: () => void;
+	isOwner: boolean;
+	ownerConfigured: boolean;
+	restrictedUsers: { id: string; name: string }[];
+	onToggleUploads: (targetId: string, disabled: boolean) => void;
 	send: (msg: AccountMessage) => void;
 }) {
 	const [nameInput, setNameInput] = useState(account.name);
 	const [notifHint, setNotifHint] = useState<string | null>(null);
+	const [copied, setCopied] = useState(false);
 
 	useEffect(() => {
 		if (!notice) return;
 		const t = setTimeout(onClearNotice, 2500);
 		return () => clearTimeout(t);
 	}, [notice, onClearNotice]);
+
+	useEffect(() => {
+		if (isOwner) {
+			send({ type: "uploads-restricted-list", token });
+		}
+		// eslint-disable-next-line react-hooks/exhaustive-deps
+	}, []);
+
+	const copyAccountId = async () => {
+		try {
+			await navigator.clipboard.writeText(account.id);
+			setCopied(true);
+			setTimeout(() => setCopied(false), 2000);
+		} catch (e) {
+			// clipboard unavailable; the id is visible so it can be copied by hand
+		}
+	};
 
 	const saveName = () => {
 		const newName = nameInput.trim();
@@ -852,6 +972,40 @@ function SettingsModal({
 						<span className="settings-label">Signed in as</span>
 						<span className="settings-value">{account.name}</span>
 					</div>
+					{isOwner && (
+						<div className="settings-row">
+							<span className="settings-label">Role</span>
+							<span className="settings-value">You are the site owner</span>
+						</div>
+					)}
+					{!ownerConfigured && (
+						<>
+							<div className="settings-row">
+								<span className="settings-label">
+									Your account ID
+								</span>
+								<span className="settings-value">
+									<code className="account-id">{account.id}</code>
+								</span>
+							</div>
+							<div className="settings-row">
+								<button
+									type="button"
+									className="settings-copy"
+									onClick={copyAccountId}
+								>
+									{copied ? "Copied!" : "Copy account ID"}
+								</button>
+							</div>
+							<p className="settings-hint">
+								No site owner is configured yet. Copy your account
+								ID, then run{" "}
+								<code>npx wrangler secret put OWNER_ACCOUNT_IDS</code>{" "}
+								and paste it. After redeploying, this line
+								disappears for everyone.
+							</p>
+						</>
+					)}
 					<form
 						className="settings-rename"
 						onSubmit={(e) => {
@@ -908,6 +1062,38 @@ function SettingsModal({
 						</div>
 					</div>
 
+					{isOwner && (
+						<>
+							<div className="settings-section">ADMIN</div>
+							<p className="settings-hint">
+								Users below can't send images or videos, but can
+								still chat normally.
+							</p>
+							{restrictedUsers.length === 0 ? (
+								<p className="settings-hint">
+									Nobody is blocked right now. Block someone from
+									a message in any room with the 🚫 button.
+								</p>
+							) : (
+								<ul className="restricted-list">
+									{restrictedUsers.map((user) => (
+										<li key={user.id} className="restricted-item">
+											<span>{user.name}</span>
+											<button
+												type="button"
+												onClick={() =>
+													onToggleUploads(user.id, false)
+												}
+											>
+												Allow uploads
+											</button>
+										</li>
+									))}
+								</ul>
+							)}
+						</>
+					)}
+
 					{notice && (
 						<p
 							className={`settings-notice ${
@@ -950,6 +1136,9 @@ function App() {
 	const [notifsPref, setNotifsPref] = useState(
 		() => localStorage.getItem(NOTIFS_KEY) === "on",
 	);
+	const [restrictedUsers, setRestrictedUsers] = useState<
+		{ id: string; name: string }[]
+	>([]);
 	const [theme, setTheme] = useState<"dark" | "light">(() =>
 		localStorage.getItem(THEME_KEY) === "light" ? "light" : "dark",
 	);
@@ -961,7 +1150,14 @@ function App() {
 		localStorage.setItem(THEME_KEY, theme);
 	}, [theme]);
 
-	const account = session ? { id: session.id, name: session.name } : null;
+	const account = session
+		? {
+				id: session.id,
+				name: session.name,
+				isOwner: session.isOwner,
+				uploadsDisabled: session.uploadsDisabled,
+			}
+		: null;
 	const token = session?.token ?? null;
 
 	const roomsSocket = usePartySocket({
@@ -990,15 +1186,31 @@ function App() {
 
 	const handleAccountMessage = (m: AccountMessage) => {
 		if (m.type === "registered" || m.type === "logged-in") {
+			const sessionData = {
+				id: m.id,
+				name: m.name,
+				token: m.token,
+				isOwner: m.isOwner,
+				uploadsDisabled: m.uploadsDisabled,
+				ownerConfigured: m.ownerConfigured,
+			};
 			if (m.remember) {
-				localStorage.setItem(
-					SESSION_KEY,
-					JSON.stringify({ id: m.id, name: m.name, token: m.token }),
-				);
+				localStorage.setItem(SESSION_KEY, JSON.stringify(sessionData));
 			}
-			setSession({ id: m.id, name: m.name, token: m.token });
+			setSession(sessionData);
 			setAuthError(null);
 			setAccountNotice(null);
+		} else if (m.type === "uploads-restricted") {
+			setRestrictedUsers(m.accounts);
+		} else if (m.type === "uploads-rule-done") {
+			if (m.ok) {
+				setRestrictedUsers((prev) =>
+					prev.some((r) => r.id === m.targetId)
+						? prev.filter((r) => r.id !== m.targetId)
+						: [...prev, { id: m.targetId, name: "?" }],
+				);
+			}
+			setAccountNotice({ ok: m.ok, text: m.message });
 		} else if (m.type === "renamed") {
 			setSession((prev) => {
 				const next = prev ? { ...prev, name: m.name } : prev;
@@ -1013,6 +1225,7 @@ function App() {
 				localStorage.removeItem(SESSION_KEY);
 				setSession(null);
 				setSettingsOpen(false);
+				setRestrictedUsers([]);
 				setAuthError("Your session expired. Sign in again.");
 			} else if (account) {
 				setAccountNotice({ ok: false, text: m.message });
@@ -1020,6 +1233,19 @@ function App() {
 				setAuthError(m.message);
 			}
 		}
+	};
+
+	const handleRuleResult = (
+		ok: boolean,
+		_message: string,
+		targetId: string,
+	) => {
+		if (!ok) return;
+		setRestrictedUsers((prev) =>
+			prev.some((r) => r.id === targetId)
+				? prev.filter((r) => r.id !== targetId)
+				: [...prev, { id: targetId, name: "?" }],
+		);
 	};
 
 	const setNotifs = (value: boolean) => {
@@ -1095,6 +1321,10 @@ function App() {
 					account={account}
 					token={token}
 					notifsPref={notifsPref}
+					isOwner={account.isOwner}
+					uploadsDisabled={account.uploadsDisabled}
+					restrictedUsers={restrictedUsers}
+					onRuleResult={handleRuleResult}
 					onOpenSidebar={() => setSidebarOpen(true)}
 				/>
 			) : (
@@ -1127,8 +1357,20 @@ function App() {
 								localStorage.removeItem(SESSION_KEY);
 								setSession(null);
 								setSettingsOpen(false);
+								setRestrictedUsers([]);
 								setAuthError(null);
 								navigate("/");
+							}}
+							isOwner={account.isOwner}
+							ownerConfigured={session?.ownerConfigured ?? false}
+							restrictedUsers={restrictedUsers}
+							onToggleUploads={(targetId, disabled) => {
+								send({
+									type: "uploads-rule",
+									token,
+									targetId,
+									disabled,
+								});
 							}}
 							send={send}
 						/>
