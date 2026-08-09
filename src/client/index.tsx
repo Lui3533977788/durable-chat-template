@@ -68,6 +68,18 @@ function formatTime(ts: number): string {
 	})}, ${time}`;
 }
 
+const GROUP_INTERVAL_MS = 5 * 60 * 1000;
+
+function shouldShowTime(
+	message: ChatMessage,
+	prev: ChatMessage | undefined,
+): boolean {
+	if (!message.timestamp) return false;
+	if (!prev || !prev.timestamp) return true;
+	if (prev.userId !== message.userId) return true;
+	return message.timestamp - prev.timestamp >= GROUP_INTERVAL_MS;
+}
+
 function notify(title: string, body: string) {
 	if (!("Notification" in window) || Notification.permission !== "granted") {
 		return;
@@ -374,21 +386,23 @@ function ChatRoom({
 						el.scrollHeight - el.scrollTop - el.clientHeight < 100;
 				}}
 			>
-				{messages.map((message) => (
-					<div
-						key={message.id}
-						data-mid={message.id}
-						className={`message ${
-							isSelf(message, account) ? "self" : ""
-						} ${message.id === highlightId ? "highlighted" : ""}`}
-					>
-						<div className="user">
-							{message.user}
-							{message.timestamp && (
-								<span className="time">
-									{formatTime(message.timestamp)}
-								</span>
-							)}
+				{messages.map((message, i) => {
+					const showTime = shouldShowTime(message, messages[i - 1]);
+					return (
+						<div
+							key={message.id}
+							data-mid={message.id}
+							className={`message ${
+								isSelf(message, account) ? "self" : ""
+							} ${message.id === highlightId ? "highlighted" : ""}`}
+						>
+							<div className="user">
+								{message.user}
+								{showTime && (
+									<span className="time">
+										{formatTime(message.timestamp!)}
+									</span>
+								)}
 							<button
 								type="button"
 								className="reply-button"
@@ -454,7 +468,8 @@ function ChatRoom({
 							)}
 						</div>
 					</div>
-				))}
+					);
+				})}
 			</div>
 			{lightbox && (
 				<div className="lightbox" onClick={() => setLightbox(null)}>
