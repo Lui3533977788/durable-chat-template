@@ -1,11 +1,10 @@
-﻿:root {
+:root {
 	color-scheme: dark;
 	--bg: #1a1a2e;
 	--bg-2: #16213e;
 	--bg-3: #2a2a4a;
 	--bg-4: #333355;
 	--border: #2a2a4a;
-	--border-soft: color-mix(in srgb, var(--border) 45%, transparent);
 	--accent: #0f3460;
 	--accent-hover: #1a4a80;
 	--accent-2: #4a9eff;
@@ -30,7 +29,6 @@
 	--bg-3: #e9ebf2;
 	--bg-4: #dde1ec;
 	--border: #d9dce6;
-	--border-soft: color-mix(in srgb, var(--border) 45%, transparent);
 	--accent: #2563eb;
 	--accent-hover: #1d4ed8;
 	--accent-2: #2563eb;
@@ -971,6 +969,7 @@ html {
 	max-height: 85vh;
 	overflow-y: auto;
 	background: var(--bg-2);
+	border: 1px solid var(--border-soft);
 	border-radius: 16px;
 	box-shadow: 0 12px 40px var(--shadow-strong);
 }
