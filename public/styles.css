@@ -484,10 +484,10 @@ html {
 .bubble {
 	background: var(--bg-3);
 	color: var(--text);
-	padding: 10px 14px;
+	padding: 7px 12px;
 	border-radius: 14px;
 	border-top-left-radius: 4px;
-	line-height: 1.45;
+	line-height: 1.4;
 	word-wrap: break-word;
 	font-size: 17px;
 	width: fit-content;
